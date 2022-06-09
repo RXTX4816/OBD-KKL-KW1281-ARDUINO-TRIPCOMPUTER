@@ -379,8 +379,8 @@ bool KWPSendBlock(char *s, int size)
         lcd.print("Sent: " + String(char(data)) + " Resp: " + String(char(complement)));
         lcd.setCursor(0, 1);
         lcd.print("ERR: INV COMPL");
-        delay(3000);
-        disconnect();
+        delay(30);
+        //disconnect();
         //errorData++;
         return false;
       }
