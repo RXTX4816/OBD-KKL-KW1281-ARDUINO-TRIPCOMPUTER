@@ -7,7 +7,7 @@
 #include "NewSoftwareSerial.h"
 #include "bigInt.h"
 
-// VW BORA 05/2000 KWP1281
+// VW BORA KWP1281, 036906034AM MARELLI ECU
 const uint8_t ADDR_ENGINE = 0x01;
 // Label File: None
 // Measurement Blocks - 0x08:
@@ -52,53 +52,11 @@ const uint8_t ADDR_INSTRUMENTS = 0x17;
 // Group 2: 121960 Odometer, 9.0 l Fuel level, 93 ohms Fuel Sender Resistance, 0.0°C Ambient Temperature
 // Group 3: 12.0°C Coolant temp., OK Oil Level (OK/n.OK), 11.0°C Oil temp, N/A
 
-const byte pwm_pin = 6;
-byte pwm_level = 0;
 
-const byte analog_pin = 0;
-unsigned short analog_value = 0;
 
-char *time_passed_text;
 
-const long get_time()
-{
-  return millis();
-}
-
-/*LiquidLine welcome_line1(1, 0, "LiquidMenu ", LIQUIDMENU_VERSION);
-LiquidLine welcome_line2(0, 1, "Buttons example");
-LiquidScreen welcome_screen(welcome_line1, welcome_line2);
-
-LiquidLine analog_line1(0, 0, "Time passed in ms: ");
-LiquidLine analog_line2(0, 1, get_time);
-LiquidScreen screen2(analog_line1, analog_line2);
-
-LiquidLine pwm_line(0, 0, "PWM level: ", pwm_level);
-LiquidScreen pwm_screen(pwm_line);
-
-*/
-
-// 1 = ButtonTest
-// 2 = Hello World
-// 3 = Blink
-// 4 = Cursor
-// 5 = Blank
-// 6 = Scroll
-// 7 = Set Cursor
-// 8 = Text Direction
-// 9 = Autoscroll
-int display_mode;
-
-// 0 = Nothing
-// 8 = Up
-// 6 = Right
-// 4 = Left
-// 2 = Down
-// 5 = Select
-int selected_user_input = 0;
-
-long lastMillis = 0;
-int period = 1000;
+unsigned long last_random_number_time = 0;
+int random_number_update_rate = 1500;
 
 // Backend
 uint8_t addr_current = -1;   // Current address of connection
@@ -109,10 +67,7 @@ bool connected = false;
 int baud_rate = 9600;
 int baud_rate_error_count = 0;
 int baud_rate_total_error_count = 0;
-
-// Menu when not connected to vehicle
-bool init_passed = false;
-
+bool com_error = false;
 
 // Menu
 int screen_current = 0;
@@ -124,7 +79,7 @@ unsigned long endTime = 0;
 // Pins
 uint8_t pin_rx = 3;
 uint8_t pin_tx = 2;
-int pin_led = -1;
+//int pin_led = -1;
 
 // Temp Measurements
 byte first_k = 0;
@@ -136,16 +91,23 @@ float third_v = -1;
 byte fourth_k = 0;
 float fourth_v = -1;
 
-// Measurements
-int vehicle_speed = -1;
-int engine_rpm = -1;
-String oil_pressure = "NA"; // Oil Pr. 2 < min // NOT USED
-long odometer = -1;
-float fuel_level = -1;
-float ambient_temp = -1;
-int coolant_temp = -1;
-int oil_temp = -1;
-String oil_level = "NA"; // OK / n. OK // NOT USED
+// Measurements addr 17
+int vehicle_speed = 999;
+int engine_rpm = 9999;
+int oil_pressure_min = 9; // Oil Pr. 2 < min // NOT USED
+int time_ecu = 9999;
+unsigned long connect_time_start = millis();
+
+int odometer = 999999;
+int odometer_start = 999998;
+int fuel_level = 99;
+int fuel_level_start = 98;
+int fuel_sensor_resistance; // Ohm
+float ambient_temp = 99.9;
+
+int coolant_temp = 999;
+int oil_level_ok = 9;
+int oil_temp = 999;
 //int intake_air_temp = -1;
 //int engine_load = -1;
 //float throttle_valve = -1;
@@ -153,14 +115,14 @@ String oil_level = "NA"; // OK / n. OK // NOT USED
 //float fuel_consumption = -1;
 
 // EEPROM local variables
-int v_max = -1;
-int fault_codes_count = -1;
-int errors_count = -1;
+//int v_max = -1;
+//int fault_codes_count = -1;
+//int errors_count = -1;
 
 // EEPROM Storage Addresses
-int v_max_addr = 0;             // Store the maximum speed
-int fault_codes_count_addr = 1; // Amount of fault codes
-int errors_count_addr = 2;      // Amount of obdisplay errors (calculations, serial communication, display)
+//int v_max_addr = 0;             // Store the maximum speed
+//int fault_codes_count_addr = 1; // Amount of fault codes
+//int errors_count_addr = 2;      // Amount of obdisplay errors (calculations, serial communication, display)
 
 // Init libraries
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7);          //16x2 display
@@ -172,101 +134,108 @@ NewSoftwareSerial obd(pin_rx, pin_tx, false); // rx, tx, inverse logic = false
 //LiquidLine line_2_start(0, 1, "PLEASE START");
 //LiquidScreen screen_start(line_1_start, line_2_start);
 
-String convert_int_to_string(int value)
-{
+// Config
+byte simulation_mode_active = -1;
+int setup_max_duration = 500;
+
+// DEBUG infos
+String error_msg1 = "";
+String error_msg2 = "";
+
+String convert_int_to_string(int value) {
   char result[15];
   sprintf(result, "%d", value);
   return result;
 }
 
-String convert_bool_string(bool value)
-{
-  if (value)
-  {
+/**
+ * @brief Converts a boolean to a String
+ * 
+ * @param value Boolean
+ * @return String Y or N
+ */
+String convert_bool_string(bool value) {
+  if (value) {
     return "Y";
-  }
-  else
-  {
+  } else {
     return "N";
   }
 }
 
-void baud_error()
-{
-  if (baud_rate_total_error_count > 6)
-  {
+void baud_error() {
+  if (baud_rate_total_error_count > 6) {
     addr_default = 0x01;
-  }
-    if (baud_rate_error_count > 1)
-    {
-      if (baud_rate == 9600)
-      {
+  } 
+  if (baud_rate_error_count > 1) {
+      if (baud_rate == 9600) {
         baud_rate = 10400;
-      }
-      else
-      {
+      } else {
         baud_rate = 9600;
       }
       baud_rate_error_count = 0;
-    }
-    else
-    {
-      baud_rate_error_count++;
-    }
+  } else {
+    baud_rate_error_count++;
+  }
   
   baud_rate_total_error_count++;
 }
 
 // Check if connection with ECU is active
-bool is_connected()
-{
-  if (!obd.isListening())
-  {
+bool is_connected() {
+  if (!obd.isListening()) {
     return false;
-  }
-  else
-  {
+  } else {
     return true;
   }
 }
 
-void disconnect()
-{
+void disconnect() {
   connected = false;
   addr_current = -1;
+  odometer_start
+ = 999998;
+ fuel_level_start = 98;
+  connect_time_start = millis();
+  // TODO Kommunikationsende prozedur
 }
 
-void obdWrite(uint8_t data)
-{
-#ifdef DEBUG
-/*  Serial.print("uC:");
-  Serial.println(data, HEX);*/
-#endif
+void increase_block_counter() {
+  if (block_counter == 255) {
+    block_counter = 0;
+  } else {
+    block_counter++;
+  }
+}
 
-  //*********************  ADDED 5ms delay ****************************************************************
-  //delay(5);
-  delay(4); //pimp
+void obdWrite(uint8_t data) {
+  // #ifdef DEBUG
+  // Serial.print("uC:");
+  // Serial.println(data, HEX);*/
+  // #endif
+  delay(5);
   obd.write(data);
 }
 
-uint8_t obdRead()
-{
+/**
+ * @brief Read OBD input from ECU
+ * 
+ * @return uint8_t The incoming byte or -1 if timeout
+ */
+uint8_t obdRead() {
   unsigned long timeout = millis() + 1000;
-  while (!obd.available())
-  {
-    if (millis() >= timeout)
-    {
-      //      Serial.println(F("ERROR: obdRead timeout"));
+  while (!obd.available()) {
+    if (millis() >= timeout) {
+      // Serial.println(F("ERROR: obdRead timeout"));
+      // errorTimeout++;
       disconnect();
-      //errorTimeout++;
-      return 0;
+      return -1;
     }
   }
   uint8_t data = obd.read();
-  /*#ifdef DEBUG
-//  Serial.print("ECU:");
-//  Serial.println(data, HEX);
-#endif*/
+  //  #ifdef DEBUG
+  //  Serial.print("ECU:");
+  //  Serial.println(data, HEX);
+  //  #endif
   return data;
 }
 
@@ -351,12 +320,12 @@ bool KWPSendBlock(char *s, int size)
   Serial.println(block_counter);
   // show data
   Serial.print(F("OUT:"));*/
-  for (int i = 0; i < size; i++)
-  {
-    uint8_t data = s[i];
+  //for (int i = 0; i < size; i++)
+  //{
+  //  uint8_t data = s[i];
     //    Serial.print(data, HEX);
     //    Serial.print(" ");
-  }
+  //}
   //  Serial.println();
   for (int i = 0; i < size; i++)
   {
@@ -369,24 +338,24 @@ bool KWPSendBlock(char *s, int size)
       errorData++;
       return false;
     }*/
-    if (i < size - 1)
-    {
+    if (i < size - 1) {
       uint8_t complement = obdRead();
-      if (complement != (data ^ 0xFF))
-      {
+      if (complement != (data ^ 0xFF)) {
         //        Serial.println(F("ERROR: invalid complement"));
         lcd.setCursor(0, 0);
+        error_msg1 = "Sent: " + String(char(data ^ 0xFF)) + " Resp: " + String(char(complement));
+        error_msg2 = "ERR: INV COMPL";
         lcd.print("Sent: " + String(char(data)) + " Resp: " + String(char(complement)));
         lcd.setCursor(0, 1);
         lcd.print("ERR: INV COMPL");
-        delay(30);
-        //disconnect();
+        delay(3000);
+        disconnect();
         //errorData++;
         return false;
       }
     }
   }
-  block_counter++;
+  increase_block_counter();
   return true;
 }
 
@@ -399,9 +368,13 @@ bool KWPSendAckBlock()
   return (KWPSendBlock(buf, 4));
 }
 
+uint8_t data_temp = 0;
+int block_count_errors = 0;
 // count: if zero given, first received byte contains block length
 // 4800, 9600 oder 10400 Baud, 8N1
-bool KWPReceiveBlock(char s[], int maxsize, int &size)
+// source: 
+// -1 = default | 1 = readsensors
+bool KWPReceiveBlock(char s[], int maxsize, int &size, int source=-1)
 {
   bool ackeachbyte = false;
   uint8_t data = 0;
@@ -421,18 +394,29 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size)
     return false;
   }
   unsigned long timeout = millis() + 1000;
-  while ((recvcount == 0) || (recvcount != size))
-  {
-    while (obd.available())
-    {
+  while ((recvcount == 0) || (recvcount != size)) {
+    while (obd.available()) {
       data = obdRead();
+      if (data == -1) {
+        lcd.setCursor(0, 1);
+        lcd.print("Timeout                ");
+        delay(2000);
+        return false;
+      }
       s[recvcount] = data;
       recvcount++;
-      if ((size == 0) && (recvcount == 1))
-      {
-        size = data + 1;
-        if (size > maxsize)
-        {
+      if ((size == 0) && (recvcount == 1)) {
+        if (source == 1 && (data != 15 || data != 3) && obd.available()) {
+          lcd.setCursor(0, 1);
+          lcd.print("WARN block length");
+          lcd.setCursor(0, 2);
+          lcd.print("Exp 15 Is " + String(data));
+          com_error = true;
+          size = 6;
+        } else {
+          size = data + 1;
+        }
+        if (size > maxsize) {
           //          Serial.println("ERROR: invalid maxsize");
           lcd.setCursor(0, 1);
           lcd.print("ERR:size>maxsize                 ");
@@ -440,16 +424,26 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size)
           return false;
         }
       }
-      if ((ackeachbyte) && (recvcount == 2))
-      {
-        if (data != block_counter)
-        {
-          //          Serial.println(F("ERROR: invalid block_counter"));
-          lcd.setCursor(0, 1);
+      if (com_error) {
+        if (recvcount == 1) {
+          ackeachbyte = false;
+        } else if (recvcount == 3) {
+          ackeachbyte = true;
+        } else if (recvcount == 4) {
+          ackeachbyte = false;
+        } else if (recvcount == 6) {
+          ackeachbyte = true;
+        }
+        continue;
+      }
+      if ((ackeachbyte) && (recvcount == 2)) {
+        if (data != block_counter) {
+          lcd.setCursor(0, 0);
           lcd.print("ERR: BLOCK COUNT                 ");
+          lcd.setCursor(0, 1);
+          lcd.print("Exp:" + String(data) + " Is:" + String(block_counter) + "         ");
           delay(2000);
           disconnect();
-          //errorData++;
           return false;
         }
       }
@@ -467,6 +461,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size)
       }
       timeout = millis() + 1000;
     }
+
     if (millis() >= timeout)
     {
       //      Serial.println(F("ERROR: timeout"));
@@ -482,14 +477,14 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size)
   /*  Serial.print(F("IN: sz="));
   Serial.print(size);
   Serial.print(F(" data=")); */
-  for (int i = 0; i < size; i++)
-  {
-    uint8_t data = s[i];
+  //for (int i = 0; i < size; i++)
+  //{
+    //uint8_t data = s[i];
     /*    Serial.print(data, HEX);
     Serial.print(F(" "));*/
-  }
+  //}
   //  Serial.println();
-  block_counter++;
+  increase_block_counter();
   return true;
 }
 
@@ -578,21 +573,38 @@ bool readSensors(int group)
   //lcd.setCursor(0, 0);
   // lcd.print("KW1281 sensor");
 
-  first_k = -1;
-  first_v = -1;
-  second_k = -1;
-  second_v = -1;
-  third_k = -1;
-  third_v = -1;
-  fourth_k = -1;
-  fourth_v = -1;
+  //first_k = -1;
+  //first_v = -1;
+  //second_k = -1;
+  //second_v = -1;
+  //third_k = -1;
+  //third_v = -1;
+  //fourth_k = -1;
+  //fourth_v = -1;
 
   char s[64];
   sprintf(s, "\x04%c\x29%c\x03", block_counter, group);
   if (!KWPSendBlock(s, 5))
     return false;
   int size = 0;
-  KWPReceiveBlock(s, 64, size);
+  if (!KWPReceiveBlock(s, 64, size, 1)) {
+    return false;
+  }
+  if (com_error) {
+    // Kommunikationsfehler
+    char s[64];
+    sprintf(s, "\x03%c\x00\x03", block_counter);
+    if (!KWPSendBlock(s, 4)) {
+      com_error = false;
+      return false;
+    }
+    block_counter = 0;
+    com_error = false;
+    int size2 = 0;
+    if (!KWPReceiveBlock(s, 64, size2)) {
+      return false;
+    }
+  }
   if (s[2] != '\xe7')
   {
     //    Serial.println(F("ERROR: invalid answer"));
@@ -910,14 +922,11 @@ bool readSensors(int group)
       break;
     }*/
 
-    switch (addr_current)
-    {
+    switch (addr_current) {
     case ADDR_INSTRUMENTS:
-      switch (group)
-      {
+      switch (group) {
       case 1:
-        switch (idx)
-        {
+        switch (idx) {
         case 0:
           // 0.0 km/h Speed
           vehicle_speed = (int)v;
@@ -928,9 +937,11 @@ bool readSensors(int group)
           break;
         case 2:
           // Oil Pr. 2 < min (Oil pressure 0.9 bar)
+          oil_pressure_min = (int)v;
           break;
         case 3:
           // 21:50 Time
+          time_ecu = (int)v;
           break;
         }
         break;
@@ -947,16 +958,16 @@ bool readSensors(int group)
           break;
         case 2:
           // 93 ohms Fuel Sender Resistance
+          fuel_sensor_resistance = (int)v;
           break;
         case 3:
           // 0.0°C Ambient Temperature
-          ambient_temp = (int)v;
+          ambient_temp = v;
           break;
         }
         break;
       case 3:
-        switch (idx)
-        {
+        switch (idx) {
         case 0:
           // 12.0°C Coolant temp.
           coolant_temp = (int)v;
@@ -1059,37 +1070,39 @@ void alarm()
   //  alarmCounter++;
 }
 
+int random_integer(int min, int max) {
+  return random(min, max);
+}
+float random_float() {
+  return 0.00;
+}
+
 void setup()
 {
-
-  // LCD writing
   //char lcd_buff[17];
-
-  // Init LCD
   lcd.begin(16, 2); // col, rows
   lcd.clear();
 
-  // Display welcome message
-  lcd.setCursor(0, 0);
-  lcd.print("Setup obdisplay.");
-  lcd.setCursor(0, 1);
-  lcd.print("EEPROM init..");
-  delay(800);
-  v_max = (int)EEPROM.read(v_max_addr);
-  fault_codes_count = (int)EEPROM.read(fault_codes_count_addr);
-  errors_count = (int)EEPROM.read(errors_count_addr);
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Setup obdisplay.");
-  lcd.setCursor(0, 1);
-  lcd.print("EEPROM rdy!");
-  delay(800);
+  //lcd.setCursor(0, 0);
+  //lcd.print("OBDISPLAY");
+
+  //lcd.print("EEPROM init..");
+  //delay(800);
+  //v_max = (int)EEPROM.read(v_max_addr);
+  //fault_codes_count = (int)EEPROM.read(fault_codes_count_addr);
+  //errors_count = (int)EEPROM.read(errors_count_addr);
+  //lcd.clear();
+  //lcd.setCursor(0, 0);
+  //lcd.print("Setup obdisplay.");
+  //lcd.setCursor(0, 1);
+  //lcd.print("EEPROM rdy!");
+  //delay(800);
 
   // Pins
   pinMode(pin_tx, OUTPUT);
   digitalWrite(pin_tx, HIGH);
-  pinMode(pin_led, OUTPUT);
-  analogWrite(pin_led, 50);
+  //pinMode(pin_led, OUTPUT);
+  //analogWrite(pin_led, 50);
 
   lcd.clear();
   lcd.setCursor(0, 0);
@@ -1097,14 +1110,45 @@ void setup()
   lcd.setCursor(0, 1);
   lcd.print(" D I S P L A Y ");
 
-  delay(500); // debug
-  //delay(3000); // day to day
-  lcd.clear();
+  delay(444);
 
+  lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("Welcome!");
+  lcd.print("Select mode:");
   lcd.setCursor(0, 1);
-  lcd.print("SELECT - connect");
+  lcd.print("ECU or SIM");
+  unsigned long setup_start_time = millis();
+  while(simulation_mode_active != 0 && simulation_mode_active != 1) {
+
+    if (millis() - setup_start_time > setup_max_duration) {
+      simulation_mode_active = 0;
+      break;
+    }
+
+    int user_input = analogRead(0);
+    if (user_input < 60){
+      // Right button
+      simulation_mode_active = 1;
+    } else if (400 <= user_input && user_input < 600) {
+      // Left button
+      simulation_mode_active = 0;
+    }
+    delay(10);
+  }
+  lcd.clear();
+  if (simulation_mode_active == 0) {
+    lcd.setCursor(0, 0);
+    lcd.print("Selected mode:");
+    lcd.setCursor(0, 1);
+    lcd.print("ECU connect");
+  } else {
+    lcd.setCursor(0, 0);
+    lcd.print("Selected mode:");
+    lcd.setCursor(0, 1);
+    lcd.print("SIMULATION");
+  }
+
+  delay(444);
 
   // menu.add_screen(welcome_screen);
   // menu.add_screen(screen2);
@@ -1115,29 +1159,34 @@ void setup()
 void loop()
 {
 
-  //connected = true;
-
-  if (!connected) {
-
-    /* Start connecting when user presses SELECT button */
-    if (!init_passed) {
-      int user_input = analogRead(0);
-      if (user_input >= 600 && user_input < 800) {
-          init_passed = true;
-      }
-      return;
-    }
-    
-    lcd.setCursor(0, 0);
-    lcd.print("CON:" + convert_bool_string(connected) + " AVA:" + convert_bool_string(obd.available() != 0) + " ");
-    lcd.setCursor(12, 0);
-    lcd.print("...");
+  if (!connected){
     block_counter = 0;
     addr_current = -1;
+
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("CON:" + convert_bool_string(connected) + " AVA:" + String(obd.available()));
     lcd.setCursor(0, 1);
-    lcd.print("Init " + String(baud_rate) + " -> " + String(addr_default) + "            ");
-    delay(500);
-    obd.begin(baud_rate); // Baud rate 9600 for Golf 4/Bora or 10400 in weird cases
+    lcd.print("Init " + String(baud_rate) + " -> " + String(addr_default));
+    
+    //bool select = false;
+    bool select = true;
+    while (!select) {
+      int user_input = analogRead(0);
+      if (user_input >= 600 && user_input < 800) {
+        select = true;
+      }
+      delay(10);
+    }
+
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("CON:" + convert_bool_string(connected) + " AVA:" + String(obd.available()));
+    lcd.setCursor(0, 1);
+    lcd.print("Connecting");
+
+    if (!simulation_mode_active) {
+      obd.begin(baud_rate); // Baud rate 9600 for Golf 4/Bora or 10400 in weird cases
     //lcd.setCursor(0, 1);
     //lcd.print("BaudInit..");
     KWP5BaudInit(addr_default);
@@ -1187,42 +1236,195 @@ void loop()
     last_first_line = "SUCCESSFUL             ";
     last_second_line = "CONNECTION             ";
     return;
+    } else {
+      lcd.setCursor(0, 0);
+    lcd.print("CON:" + convert_bool_string(connected) + " AVA:" + obd.available() + " ");
+    lcd.setCursor(12, 0);
+    lcd.print("               ");
+    lcd.setCursor(0, 1);
+    lcd.print("SUCC SIM CONNECTION!         ");
+    last_first_line = "SUCCESSFUL SIM        ";
+    last_second_line = "CONNECTION             ";
+    connect_time_start = millis();
+    connected = true;
+    return;
+    }
+
+    
   }
 
-  readSensors(1);
-  readSensors(2);
-  readSensors(3);
+  if (!simulation_mode_active) {
+    for (int i = 1; i <= 3; i++)
+    if (!readSensors(i)) {
+      disconnect();
+      delay(4000);
+      return;
+    } 
+    if (odometer_start == 999998) {
+      odometer_start = odometer;
+    }
+    if (fuel_level_start == 98) {
+      fuel_level_start = fuel_level;
+    }
+  } else {
+    unsigned long current_time = millis();
+    if (current_time - last_random_number_time > random_number_update_rate) {
+      vehicle_speed = random_integer(0, 195);
+      engine_rpm = random_integer(700, 6000);
+      fuel_level = random_integer(42, 42);
+      fuel_level_start = 42;
+      coolant_temp = random_integer(25, 130);
+      oil_temp = random_integer(25, 130);
+      odometer_start = 111111;
+      odometer = 120000;
+      odometer++;
+      last_random_number_time = current_time;
+      increase_block_counter();
+    }
+    
+  }
 
-  String first_line = "";
-  String second_line = "";
+  // TODO:
+  // Engine RPM > 4000 (ORANGE LED)
+  // Oil temp or Cooler temp over 115 (RED LED / SOUND)
 
-  switch (menu_current)
-  {
+
+  String first_line = "                ";
+  String second_line = "                ";
+
+  String vehicle_speed_string = String(vehicle_speed);
+  String engine_rpm_string = String(engine_rpm);
+  String coolant_temp_string = String(coolant_temp);
+  String oil_temp_string = String(oil_temp);
+  String fuel_level_string = String(fuel_level);
+  String block_counter_string = String(block_counter);
+
+  
+  int vehicle_speed_string_length = strlen(vehicle_speed_string.c_str());
+  int engine_rpm_string_length = strlen(engine_rpm_string.c_str());
+  int coolant_temp_string_length = strlen(coolant_temp_string.c_str());
+  int oil_temp_string_length = strlen(oil_temp_string.c_str());
+  int fuel_level_string_length = strlen(fuel_level_string.c_str());
+  int block_counter_string_length = strlen(block_counter_string.c_str());
+
+  float elapsed_seconds_since_start = ((millis() - connect_time_start)/1000);
+  int elpased_km_since_start = odometer - odometer_start;
+  int fuel_burned_since_start = fuel_level_start - fuel_level;
+
+//  10km     160sec   1L  
+//  
+//
+//
+//
+  float fuel_per_100km = (100/elpased_km_since_start)*fuel_burned_since_start;
+  float fuel_per_hour = (3600/elapsed_seconds_since_start)*fuel_burned_since_start;
+
+  switch (menu_current) {
   case 0:
     // Default menu, tachometer etc
-    switch (screen_current)
-    {
+    switch (screen_current) {
     case 0:
-      // First page
-      if (engine_rpm > 4000)
-      {
-        first_line = String(vehicle_speed) + " " + String(engine_rpm) + "! " + floatToString(fuel_level) + "L";
+      for (int i = 0; i < vehicle_speed_string_length; i++) {
+        if (i+1 >= vehicle_speed_string_length) {
+          first_line.setCharAt(2, vehicle_speed_string.charAt(i));
+        } else if (i+2 >= vehicle_speed_string_length) {
+          first_line.setCharAt(1, vehicle_speed_string.charAt(i));
+        } else {
+          first_line.setCharAt(0, vehicle_speed_string.charAt(i));
+        }
       }
-      else
-      {
-        first_line = String(vehicle_speed) + " " + String(engine_rpm) + " " + floatToString(fuel_level) + "L";
+      first_line.setCharAt(4, 'K');
+      first_line.setCharAt(5, 'M');
+      first_line.setCharAt(6, 'H');
+      for (int i = 0; i < engine_rpm_string_length; i++) {
+        if (i+1 >= engine_rpm_string_length) {
+          first_line.setCharAt(11, engine_rpm_string.charAt(i));
+        } else if (i+2 >= engine_rpm_string_length) {
+          first_line.setCharAt(10, engine_rpm_string.charAt(i));
+        } else if (i+3 >= engine_rpm_string_length) {
+          first_line.setCharAt(9, engine_rpm_string.charAt(i));
+        } else {
+          first_line.setCharAt(8, engine_rpm_string.charAt(i));
+        }
       }
-      second_line = String(coolant_temp) + "k " + String(oil_temp) + "o " + String(odometer) + "km";
+      if (engine_rpm > 4000) {
+        first_line.setCharAt(12, '-');
+      }
+      first_line.setCharAt(13, 'R');
+      first_line.setCharAt(14, 'P');
+      first_line.setCharAt(15, 'M');
+
+      for (int i = 0; i < coolant_temp_string_length; i++) {
+        if (i+1 >= coolant_temp_string_length) {
+          second_line.setCharAt(2, coolant_temp_string.charAt(i));
+        } else if (i+2 >= coolant_temp_string_length) {
+          second_line.setCharAt(1, coolant_temp_string.charAt(i));
+        } else {
+          second_line.setCharAt(0, coolant_temp_string.charAt(i));
+        }
+      }
+      second_line.setCharAt(3, 'C');
+      for (int i = 0; i < oil_temp_string_length; i++) {
+        if (i+1 >= oil_temp_string_length) {
+          second_line.setCharAt(7, oil_temp_string.charAt(i));
+        } else if (i+2 >= oil_temp_string_length) {
+          second_line.setCharAt(6, oil_temp_string.charAt(i));
+        } else {
+          second_line.setCharAt(5, oil_temp_string.charAt(i));
+        }
+      }
+      second_line.setCharAt(8, 'C');
+      for (int i = 0; i < fuel_level_string_length; i++) {
+        if (i+1 >= fuel_level_string_length) {
+          second_line.setCharAt(12, fuel_level_string.charAt(i));
+        } else {
+          second_line.setCharAt(11, fuel_level_string.charAt(i));
+        }
+      }
+      second_line.setCharAt(13, 'L');
+      //second_line = String(coolant_temp) + "C " + String(oil_temp) + "C " + floatToString(fuel_level) + "L";
       break;
     case 1:
-      // First page
-      first_line = "0/1";
-      second_line = "";
-      break;
-    case 2:
-      // First page
-      first_line = "0/2";
-      second_line = "";
+      for (int i = 0; i < vehicle_speed_string_length; i++) {
+        if (i+1 >= vehicle_speed_string_length) {
+          first_line.setCharAt(2, vehicle_speed_string.charAt(i));
+        } else if (i+2 >= vehicle_speed_string_length) {
+          first_line.setCharAt(1, vehicle_speed_string.charAt(i));
+        } else {
+          first_line.setCharAt(0, vehicle_speed_string.charAt(i));
+        }
+      }
+      first_line.setCharAt(4, 'K');
+      first_line.setCharAt(5, 'M');
+      first_line.setCharAt(6, 'H');
+      for (int i = 0; i < engine_rpm_string_length; i++) {
+        if (i+1 >= engine_rpm_string_length) {
+          first_line.setCharAt(11, engine_rpm_string.charAt(i));
+        } else if (i+2 >= engine_rpm_string_length) {
+          first_line.setCharAt(10, engine_rpm_string.charAt(i));
+        } else if (i+3 >= engine_rpm_string_length) {
+          first_line.setCharAt(9, engine_rpm_string.charAt(i));
+        } else {
+          first_line.setCharAt(8, engine_rpm_string.charAt(i));
+        }
+      }
+      if (engine_rpm > 4000) {
+        first_line.setCharAt(12, '-');
+      }
+      first_line.setCharAt(13, 'R');
+      first_line.setCharAt(14, 'P');
+      first_line.setCharAt(15, 'M');
+
+      second_line = String(fuel_per_100km) + " | " + String(fuel_per_hour) + "           ";
+      for (int i = 0; i < block_counter_string_length; i++) {
+        if (i+1 >= block_counter_string_length) {
+          second_line.setCharAt(15, block_counter_string.charAt(i));
+        } else if (i+2 >= block_counter_string_length) {
+          second_line.setCharAt(14, block_counter_string.charAt(i));
+        } else {
+          second_line.setCharAt(13, block_counter_string.charAt(i));
+        }
+      }
       break;
     default:
       screen_current = 0;
@@ -1232,9 +1434,7 @@ void loop()
     break;
   case 1:
     // Group select menu
-
-    switch (screen_current)
-    {
+    switch (screen_current) {
     case 0:
       first_line = "Group: " + String(group_current) + "            ";
       second_line = "-> results";
@@ -1257,11 +1457,13 @@ void loop()
     // MSG select menu
     first_line = "2/NA";
     second_line = "";
+    return;
     break;
   case 3:
     // DTC Error menu
     first_line = "3/NA";
     second_line = "";
+    return;
     break;
   default:
     menu_current = 0;
