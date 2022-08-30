@@ -5,15 +5,17 @@
 ## Welcome
 Simple trip computer for the Arduino Uno with a 16x2 Screen to display useful information in all VAG vehicles with the MARELLI 4LV ECU (VAG Number: 036906034AM). This includes most Golf mk4/Jetta/Bora from the years around 2000 that are limited to the K-Line communication and the KW1281 protocol. Newer cars since around 2005 began to adapt OBD-2 with CAN communication, that can be accessed through a ELM327 controller. No such simple controller exists currently for KKL.
 
-This repo contains all necessary files. Buy an Arduino Uno, a 16x2 Screen to stick on the board and the Autodia K409 KKL OBD to USB cable (or similar).
+This repo contains all necessary files. The only file containing code is [obdisplay.cpp](src/obdisplay.cpp). Buy an Arduino Uno, a 16x2 Screen to stick on the board and the Autodia K409 KKL OBD to USB cable (or similar).
 
 ## Setup
 Find the RX and TX connections on the AutoDia K409 board (open the OBD-site plastic) and cut them where appropiate. Refer to the [linked git repo](https://github.com/mkirbst/lupo-gti-tripcomputer-kw1281) for pictures and a bit more info. Hook the working side of both connections where you just cut to the RX and TX pins of your Arduino Uno (Watch out, since RX(Recieve) and TX(Transmit) depends on the perspective) by cutting the USB Male plug.  
 
+Open the project with platformIO and flash it to your arduino. Done. Make sure to adjust the Baud Rate and find out which ECU Addresses are available in your car.
+
 ## Label Files
 The measurement groups of each ECU Addres contain 4 values. Each different version of each car may have a different order of values and different values to obtain. To know which groups display which values you either need to search for your cars Label File "xxx-xxx-xxx.LBL" or hook up VCDS (or any other software to display measurement groups) and record your display while clicking through the groups to get a rough image what these values correspond to.
 
-Here are the values for the 036906034AM MARELLI ECU for the 1.6 16V Engine:
+Here are the values for the 036906034AM MARELLI ECU for the 1.6 16V Engine, which partly does not contain label files:
 ```cpp
 const uint8_t ADDR_ENGINE = 0x01;
 // Label File: None
@@ -76,5 +78,12 @@ This project may work with other Arduino's, Displays, OBD cables and VAG cars.
 The OBD 12V from the car should be enough to power on the Arduino, but in my case the +12V and Ground lines of the USB cable do nothing, so just hook it up like a smartphone through the cigarrete lighter USB.
 
 If you have questions feel free to send me a message. Will accept all merge requests if they work. 
+
+## Future
+Will add sometime in the future:
+- DTC Error reading and DTC Error deletion.
+- LEDs + Sound on critical warnings (Oil pressure, temperature too high, DTC errors)
+- Correct disconnect procedure. Currently there is none, the microcontroller just stops sending. 
+- Bigger Display, maybe with touch even.
 
 
