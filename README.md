@@ -1,4 +1,4 @@
-# Arduino Uno Tripcomputer for the KW1282 KKL K-Line protocol
+# Arduino Uno Tripcomputer for the KW1281 KKL K-Line protocol
 
 ![](assets/obdisplay.gif)
 
