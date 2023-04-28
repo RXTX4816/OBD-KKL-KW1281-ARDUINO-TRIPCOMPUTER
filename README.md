@@ -1,8 +1,6 @@
-# Arduino Mega Display Tripcomputer for the KW1281 KKL K-Line protocol
+# Arduino Uno Display Tripcomputer for the KW1281 KKL K-Line protocol
 
-This code is for the Arduino Mega with a Color Non-Touch Display Shield 480x320.
-
-The code for the Arduino Uno with a 16x2 Display Shield can be found in the [uno branch](/github/linguist/tree/api-changes)
+This code is for the Arduino Uno with a 16x2 Display Shield.
 
 ![](assets/obdisplay.gif)
 
