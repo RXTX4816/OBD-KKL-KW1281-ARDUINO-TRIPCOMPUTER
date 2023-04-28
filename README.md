@@ -1,6 +1,8 @@
-# Arduino Uno Tripcomputer for the KW1281 KKL K-Line protocol
+# Arduino Mega Tripcomputer for the KW1281 KKL K-Line protocol
 
-![](assets/obdisplay.gif)
+This code is for the Arduino Mega with a 480x320 Non-Touch Color Display Shield.
+
+The code for the Arduino Uno with a 16x2 Display Shield can be found in the [uno branch](RXTX4816/OBD-KKL-KW1281-ARDUINO-TRIPCOMPUTER/tree/uno)
 
 ## Welcome
 Simple trip computer for the Arduino Uno with a 16x2 Screen to display useful information in all VAG vehicles with the MARELLI 4LV ECU (VAG Number: 036906034AM). This includes most Golf mk4/Jetta/Bora from the years around 2000 that are limited to the K-Line communication and the KW1281 protocol. Newer cars since around 2005 began to adapt OBD-2 with CAN communication, that can be accessed through a ELM327 controller. No such simple controller exists currently for KKL.
