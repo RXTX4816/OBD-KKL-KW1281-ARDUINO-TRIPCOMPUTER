@@ -43,9 +43,6 @@ uint8_t pin_tx = 2; // Transmit
 
 /* --------------------------EDIT BELOW ONLY TO FIX STUFF-------------------------------------- */
 
-/* Display */
-LiquidCrystal lcd(8, 9, 4, 5, 6, 7); // 16x2 display
-// LiquidMenu menu(lcd);                         // Menu for lcd
 
 // Backend
 NewSoftwareSerial obd(pin_rx, pin_tx, false); // rx, tx, inverse logic = false
@@ -156,6 +153,9 @@ float fuel_per_100km = 0;
 float fuel_per_100km_last = fuel_per_100km;
 float fuel_per_hour = 0;
 float fuel_per_hour_last = fuel_per_hour;
+
+/* Display */
+LiquidCrystal lcd(8, 9, 4, 5, 6, 7); // 16x2 display
 
 // DEBUG infos
 String error_msg1 = "";
@@ -1374,7 +1374,7 @@ void setup()
   lcd.setCursor(0, 1);
   lcd.print(" D I S P L A Y ");
 
-  delay(444);
+  delay(1444);
 
   // Startup configuration // 0 = false, 1 = true, -1 = undefined for booleans as int8_t
   int8_t userinput_debug_mode = -1; // Whether to print Serial messages
@@ -1569,6 +1569,7 @@ void loop()
   else
   {
     simulate_values();
+    delay(175);
   }
 
   // TODO:
