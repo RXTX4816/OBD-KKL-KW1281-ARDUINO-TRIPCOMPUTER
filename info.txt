@@ -1,0 +1,48 @@
+VW BORA 05/2000 1.6 16V ATN KWP1281, 036906034AM MARELLI ECU
+
+ADDR_ENGINE = 0x01:
+// Label File: None
+// Measurement Blocks - 0x08:
+// Group 00: 1-10 with 3 digit numbers
+// Group 01: 0 /min RPM, 17.0°C Temperature, 0.0% Lambda, 10110010 Binary Bits **
+// Group 02: 0 /min RPM, 0.0% Load, 0.0ms Time Correction, 1012.0 mbar Absolute Pressure
+// Group 03: 0 /min RPM, 1012.0 mbar Absolute Pressure, 5.4° T.B. Angle, 0.0° Steering Angle **
+// Group 04: 0 /min RPM, 11.70 V Voltage, 17.0°C Temperature, 14°C Temperature **
+// Group 05: 0 /min RPM, 0.0% Load, 0.0 km/h Speed, Part Throttle NA
+// Group 06: 0 /min RPM, 0.0% Load, 14°C Temperature, -1.0% Lambda **
+// Group 14: 0 /min RPM, 0.0% Load, 0.0 no units, Enabled NA
+// Readiness - 0x15:
+// Readiness Status: 10100101
+// Exhaust Gas Recirculation: Failed or Incomplete
+// Oxygen Sensor Heating: Passed
+// Oxygen Sensor(s): Failed or Incomplete
+// Air Conditioning: Passed
+// Secondary Air Injection: Passed
+// Evaporative Emissions: Failed or Incomplete
+// Catalyst Heating: Passed
+// Catalytic Converter(s): Failed or Incomplete
+
+ADDR_ABS_BRAKES = 0x03
+// Label File: None
+// Measurement Blocks - 0x08:
+// Group 4: 0.00° Steering Angle, 0.31 m/s^2 Lateral Acceleration, -0.36°/s Turn Rate, N/A
+// Group 5: -1.27 bar Pressure, 0.42 bar Pressure, N/A, N/A
+
+ADDR_AUTO_HVAC = 0x08
+// Label File: 381-907-044.LBL
+// Measurement Blocks - 0x08:
+// Group 1: 8.0 A/C clutch sw-off cond. 1-12, 0.0 Eng. speed recog (0=no, 1=yes), 0.0 km/h Road Speed, 121.0 Standing time (0-240min.)
+// Group 2: 42.0 Measured Value, 42.0 Specified Value, 219.0 Position: air supply cooled, 42.0 Position: air supply heated
+// Group 3: 221.0 Measured Value, 221.0 Specified Value, 221.0 Position: air flow to panel, 40.0 Position: air flow to footwell
+// Group 4: 223.0 Measured Value, 223.0 Specified Value, 223.0 Position: air flow to footwell, 39.0 Position: air flow to defroster
+// Group 5: 237.0 Measured Value, 234.0 Specified Value, 234.0 Position: fresh air, 30.0 Position: recirculating
+// Group 6: 0.0°C Temp displayed on panel, 7.0°C Temp. air intake duct, 0.0°C Outside air temperature, 0.0% Sun photo sensor (0-120%)
+// Group 7: 0.0 Outlet temp. panel (G191), 5.0°C Outlet temp. floor (G192), 3.0°C Panel temp. near LCD (G56), 0.0 n/a
+// Group 8: 0.00V Specif. Voltage air blower, 0.28V Measured Voltage air blower, 12.18V Measured Voltage A/C clutch, 0.0 no units
+
+ADDR_INSTRUMENTS = 0x17
+// Label File: 1J0-920-xx0.LBL
+// Measurement Blocks - 0x08:
+// Group 1: 0.0 km/h Speed, 0 /min Engine Speed, Oil Pr. 2 < min (Oil pressure 0.9 bar), 21:50 Time
+// Group 2: 121960 Odometer, 9.0 l Fuel level, 93 ohms Fuel Sender Resistance, 0.0°C Ambient Temperature
+// Group 3: 12.0°C Coolant temp., OK Oil Level (OK/n.OK), 11.0°C Oil temp, N/A
