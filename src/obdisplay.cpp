@@ -192,6 +192,12 @@ String convert_int_to_string(int value)
   sprintf(result, "%d", value);
   return result;
 }
+String convert_int_to_string(uint16_t value)
+{
+  char result[15];
+  sprintf(result, "%d", value);
+  return result;
+}
 
 String floatToString(float v)
 {
@@ -380,7 +386,7 @@ uint8_t obdRead()
   uint8_t data = obd.read();
   if (debug_mode_enabled)
   {
-    Serial.print("ECU:");
+    Serial.print("ECU: ");
     Serial.println(data, HEX);
   }
   return data;
@@ -679,11 +685,13 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
 
     if (millis() >= timeout)
     {
+      float timeout_difference = (float)(millis() - timeout) / (float)1000;
       if (debug_mode_enabled)
       {
-        Serial.println(F("ERROR: timeout"));
+        Serial.print(F("ERROR: timeout overstepped by "));
+        Serial.print(timeout_difference);
+        Serial.println(F(" seconds"));
       }
-      float timeout_difference = (float)(millis() - timeout) / (float)1000;
       lcd.setCursor(0, 1);
       lcd.print("Timeout: " + floatToString(timeout_difference) + "sec");
       delay(2000);
@@ -1353,6 +1361,7 @@ bool obd_connect()
     delay(10);
   }
 
+  lcd.setCursor(0, 1);
   lcd.print("OBD.begin      ");
   if (debug_mode_enabled)
   {
@@ -1366,6 +1375,7 @@ bool obd_connect()
   }
   delay(144);
 
+  lcd.setCursor(0, 1);
   lcd.print("5BaudInit      ");
   if (debug_mode_enabled)
   {
@@ -1374,6 +1384,7 @@ bool obd_connect()
   }
   if (!simulation_mode_active && !KWP5BaudInit(addr_selected))
   {
+    lcd.setCursor(0, 1);
     lcd.print("5BaudInit  ERROR");
     if (debug_mode_enabled)
     {
@@ -1530,8 +1541,11 @@ void setup()
   // Startup configuration // 0 = false, 1 = true, -1 = undefined for booleans as int8_t
   int8_t userinput_debug_mode = -1; // Whether to print Serial messages
   int8_t userinput_simulation_mode = -1;
-  uint16_t userinput_baudrate = 0;
-  // uint16_t supported_baud_rates[3] = {4800, 9600, 10400};
+  uint16_t userinput_baudrate = 9600;
+  uint16_t userinput_baudrate_last = userinput_baudrate;
+  uint8_t userinput_baudrate_pointer = 3; // for default 9600
+  uint16_t supported_baud_rates_size = 5;
+  uint16_t supported_baud_rates[supported_baud_rates_size] = {1200, 2400, 4800, 9600, 10400};
   uint8_t userinput_ecu_address = 0; // 1 or 17
 
   lcd.clear();
@@ -1608,53 +1622,58 @@ void setup()
 
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("Baud:    UP 9600");
+  lcd.print("<--   Baud:  -->");
   lcd.setCursor(0, 1);
-  lcd.print("<-4800   10400->");
-  while (userinput_baudrate == 0)
+  lcd.print("  -> " + convert_int_to_string(userinput_baudrate) + "     ");
+  bool pressed_enter = false;
+  while (!pressed_enter)
   {
     int user_input = analogRead(0);
     if (user_input < 60)
     {
       // Right button
-      userinput_baudrate = 10400;
-    }
-    else if (user_input < 200)
-    {
-      // Up button
-      userinput_baudrate = 9600;
+      if (userinput_baudrate_pointer >= 4)
+      {
+        userinput_baudrate_pointer = 0;
+      } else 
+        userinput_baudrate_pointer++;
+      userinput_baudrate_last = userinput_baudrate;
+      userinput_baudrate = supported_baud_rates[userinput_baudrate_pointer];
+      lcd.setCursor(0, 1);
+      lcd.print("  -> " + convert_int_to_string(userinput_baudrate) + "     ");
+      delay(333);
     }
     else if (400 <= user_input && user_input < 600)
     {
       // Left button
-      userinput_baudrate = 4800;
+      if (userinput_baudrate_pointer <= 0)
+      {
+        userinput_baudrate_pointer = 4;
+      } else 
+        userinput_baudrate_pointer--;
+      userinput_baudrate_last = userinput_baudrate;
+      userinput_baudrate = supported_baud_rates[userinput_baudrate_pointer];
+      lcd.setCursor(0, 1);
+      lcd.print("  -> " + convert_int_to_string(userinput_baudrate) + "     ");
+      delay(333);
+    }
+    else if (user_input >= 600 && user_input < 800)
+    {
+      // Enter button
+      pressed_enter = true;
     }
     delay(10);
   }
-  if (userinput_baudrate == 4800)
-  {
 
-    lcd.setCursor(0, 0);
-    lcd.print("Baud:           ");
-    lcd.setCursor(0, 1);
-    lcd.print("<-4800           ");
-  }
-  else if (userinput_baudrate == 9600)
+  bool save_check = false;
+  for (int i = 0; i < supported_baud_rates_size; i++)
   {
-    lcd.setCursor(0, 1);
-    lcd.print("                ");
+    if (userinput_baudrate == supported_baud_rates[i])
+      save_check = true;
   }
-  else if (userinput_baudrate == 10400)
-  {
-    lcd.setCursor(0, 0);
-    lcd.print("Baud:           ");
-    lcd.setCursor(0, 1);
-    lcd.print("         10400->");
-  }
-  else
-  {
+  if (!save_check)
     setup();
-  }
+
   baud_rate = userinput_baudrate;
   delay(555);
 
@@ -1680,11 +1699,13 @@ void setup()
   }
   if (userinput_ecu_address == 1)
   {
+    lcd.setCursor(0, 1);
     lcd.print("<-- 01          ");
     addr_selected = ADDR_ENGINE;
   }
   else if (userinput_ecu_address == 17)
   {
+    lcd.setCursor(0, 1);
     lcd.print("          17 -->");
     addr_selected = ADDR_INSTRUMENTS;
   }
