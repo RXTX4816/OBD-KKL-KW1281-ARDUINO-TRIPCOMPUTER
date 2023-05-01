@@ -280,9 +280,21 @@ void display_statusbar()
 }
 void init_menu_cockpit()
 {
+  lcd.setCursor(4, 0);
+  lcd.print("KMH");
+  lcd.setCursor(13, 0);
+  lcd.print("RPM");
+  lcd.setCursor(3, 1);
+  lcd.print("C"); // Coolant
+  lcd.setCursor(8, 1);
+  lcd.print("C"); // Oil
+  lcd.setCursor(13, 1);
+  lcd.print("L"); // Fuel
+
 }
 void init_menu_experimental()
 {
+  
 }
 void init_menu_debug()
 {
@@ -779,7 +791,8 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
             Serial.println(echo, HEX);
           }
           // errorData++;
-          return false;
+          // If ECHO is wrong just keep going
+          // return false;
         }
       }
       timeout_last = timeout;
