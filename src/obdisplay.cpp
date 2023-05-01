@@ -379,7 +379,6 @@ uint8_t obdRead()
         Serial.println(F("ERROR: obdRead() timeout"));
       }
       // errorTimeout++;
-      disconnect();
       return -1;
     }
   }
@@ -595,6 +594,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
     return false;
   }
   unsigned long timeout = millis() + 1000;
+  unsigned long timeout_last = timeout;
   while ((recvcount == 0) || (recvcount != size))
   {
     while (obd.available())
@@ -671,29 +671,34 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
       if (((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)))
       {
         obdWrite(data ^ 0xFF); // send complement ack
-        /*uint8_t echo = obdRead();
-        if (echo != (data ^ 0xFF)){
-          Serial.print(F("ERROR: invalid echo "));
-          Serial.println(echo, HEX);
-          disconnect();
-          errorData++;
+        delay(25);
+        uint8_t echo = obdRead();
+        if (echo != (data ^ 0xFF))
+        {
+          if (debug_mode_enabled)
+          {
+            Serial.print(F("ERROR: invalid echo "));
+            Serial.println(echo, HEX);
+          }
+          // errorData++;
           return false;
-        }*/
+        }
       }
+      timeout_last = timeout;
       timeout = millis() + 1000;
     }
 
     if (millis() >= timeout)
     {
-      float timeout_difference = (float)(millis() - timeout) / (float)1000;
+      unsigned long timeout_difference = abs(millis() - timeout);
       if (debug_mode_enabled)
       {
         Serial.print(F("ERROR: timeout overstepped by "));
         Serial.print(timeout_difference);
-        Serial.println(F(" seconds"));
+        Serial.println(F(" ms"));
       }
       lcd.setCursor(0, 1);
-      lcd.print("Timeout: " + floatToString(timeout_difference) + "sec");
+      lcd.print("Timeout " + String(timeout_difference) + " ms");
       delay(2000);
       // errorTimeout++;
       return false;
@@ -1522,6 +1527,8 @@ bool connect()
 
 void setup()
 {
+
+  Serial.begin(9600);
   // char lcd_buff[17];
   lcd.begin(16, 2); // col, rows
   lcd.clear();
@@ -1635,7 +1642,8 @@ void setup()
       if (userinput_baudrate_pointer >= 4)
       {
         userinput_baudrate_pointer = 0;
-      } else 
+      }
+      else
         userinput_baudrate_pointer++;
       userinput_baudrate_last = userinput_baudrate;
       userinput_baudrate = supported_baud_rates[userinput_baudrate_pointer];
@@ -1649,7 +1657,8 @@ void setup()
       if (userinput_baudrate_pointer <= 0)
       {
         userinput_baudrate_pointer = 4;
-      } else 
+      }
+      else
         userinput_baudrate_pointer--;
       userinput_baudrate_last = userinput_baudrate;
       userinput_baudrate = supported_baud_rates[userinput_baudrate_pointer];
