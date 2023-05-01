@@ -212,6 +212,103 @@ bool check_msg_length(String msg)
 {
   return msg.length() <= 16; // Display size 16 characters
 }
+
+// Display functions
+void increment_menu()
+{
+  if (menu >= menu_max)
+  {
+    menu_last = menu;
+    menu = 0;
+  }
+  else
+  {
+    menu++;
+  }
+  menu_switch = true;
+}
+void decrement_menu()
+{
+  if (menu == 0)
+  {
+    menu_last = menu;
+    menu = menu_max;
+  }
+  else
+  {
+    menu--;
+  }
+  menu_switch = true;
+}
+void init_statusbar()
+{
+  lcd.setCursor(0, 0);
+  lcd.print("C:");
+  lcd.setCursor(4, 0);
+  lcd.print("A:");
+}
+/**
+ * Status bar: "C:Y A:9999*****"
+ */
+void display_statusbar()
+{
+  lcd.setCursor(2, 0);
+  lcd.print(convert_bool_char(connected));
+  String temp_obd_available = String(obd.available());
+  uint8_t temp_obd_available_x_coordinate = 6;
+  uint8_t temp_obd_available_length = temp_obd_available.length();
+  if (temp_obd_available_length < 5 && temp_obd_available_length != 0)
+  {
+    temp_obd_available_x_coordinate += 4 - temp_obd_available_length;
+  }
+  else
+  {
+    temp_obd_available = "9999";
+    temp_obd_available_x_coordinate += temp_obd_available.length();
+  }
+  for (int i = 6; i < 9; i++)
+  {
+    // Clear chars at position 6, 7 and 8 if current number is small
+    if (i < temp_obd_available_x_coordinate)
+    {
+      lcd.setCursor(i, 0);
+      lcd.print(" ");
+    }
+  }
+  lcd.setCursor(temp_obd_available_x_coordinate, 0);
+  lcd.print(temp_obd_available);
+}
+void init_menu_cockpit()
+{
+}
+void init_menu_experimental()
+{
+}
+void init_menu_debug()
+{
+}
+void init_menu_dtc()
+{
+}
+void init_menu_settings()
+{
+}
+void display_menu_cockpit()
+{
+}
+void display_menu_experimental()
+{
+}
+void display_menu_debug()
+{
+}
+void display_menu_dtc()
+{
+}
+void display_menu_settings()
+{
+}
+
 void increase_block_counter()
 {
   if (block_counter >= 255)
@@ -1350,15 +1447,14 @@ bool obd_connect()
   block_counter = 0;
 
   lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("CON:" + convert_bool_string(connected) + " AVA:" + String(obd.available()) + "     ");
+  init_statusbar();
+  display_statusbar();
   lcd.setCursor(0, 1);
   lcd.print("->PRESS ENTER<-");
   bool select = false;
   while (!select)
   {
-    lcd.setCursor(0, 0);
-    lcd.print("CON:" + convert_bool_string(connected) + " AVA:" + String(obd.available()) + "     ");
+    display_statusbar();
     int user_input = analogRead(0);
     if (user_input >= 600 && user_input < 800)
     {
@@ -1375,12 +1471,9 @@ bool obd_connect()
   }
   obd.begin(baud_rate); // Baud rate 9600 for Golf 4/Bora or 10400 in weird cases
   lcd.print("OBD.begin  DONE");
-  if (debug_mode_enabled)
-  {
-    Serial.println(F("OBD.begin() DONE"));
-  }
+  display_statusbar();
   delay(144);
-
+  display_statusbar();
   lcd.setCursor(0, 1);
   lcd.print("5BaudInit      ");
   if (debug_mode_enabled)
@@ -1398,8 +1491,7 @@ bool obd_connect()
     }
     return false;
   }
-  lcd.setCursor(0, 0);
-  lcd.print("CON:" + convert_bool_string(connected) + " AVA:" + String(obd.available()) + "     ");
+  display_statusbar();
 
   // printDebug("Init ADDR " + String(addr_selected) + " with " + baud_rate + " baud");
   char response[3]; // Response should be 0x55, 0x01, 0x8A
@@ -1414,19 +1506,31 @@ bool obd_connect()
     if (debug_mode_enabled)
     {
       Serial.println(F("KWP5BaudInit Handshake ERROR"));
+      Serial.println(F("THE FOLLOWING MAY HAVE NO CORRELATION TO THE ERROR"));
+      Serial.print(F("Expected ["));
+      Serial.print(0x55, HEX);
+      Serial.print(F(" "));
+      Serial.print(0x01, HEX);
+      Serial.print(F(" "));
+      Serial.print(0x8A, HEX);
+      Serial.print(F("] got ["));
+      Serial.print((uint8_t)response[0], HEX);
+      Serial.print(F(" "));
+      Serial.print((uint8_t)response[1], HEX);
+      Serial.print(F(" "));
+      Serial.print((uint8_t)response[2], HEX);
+      Serial.println(F("]"));
     }
     delay(444);
     // printError("connect() KWPReceiveBlock error");
     return false;
   }
-  lcd.setCursor(0, 0);
-  lcd.print("CON:" + convert_bool_string(connected) + " AVA:" + String(obd.available()) + "     ");
+  display_statusbar();
   lcd.setCursor(0, 1);
   lcd.print("Handshake    ...");
   if (!simulation_mode_active && ((((uint8_t)response[0]) != 0x55) || (((uint8_t)response[1]) != 0x01) || (((uint8_t)response[2]) != 0x8A))) // 85 1 138
   {
-    lcd.setCursor(0, 0);
-    lcd.print("CON:" + convert_bool_string(connected) + " AVA:" + String(obd.available()) + "     ");
+    display_statusbar();
     lcd.setCursor(0, 1);
     lcd.print("Handshake  WRONG");
     if (debug_mode_enabled)
@@ -1449,9 +1553,7 @@ bool obd_connect()
     // printError("Expected [" + String(0x55) + " " + String(0x01) + " " + String(0x8A) + "] got [" + String((uint8_t)response[0]) + " " + String((uint8_t)response[1]) + " " + String((uint8_t)response[2]) + "]");
     return false;
   }
-
-  lcd.setCursor(0, 0);
-  lcd.print("CON:" + convert_bool_string(connected) + " AVA:" + String(obd.available()) + "     ");
+  display_statusbar();
   lcd.setCursor(0, 1);
   lcd.print("Handshake  RIGHT");
   if (debug_mode_enabled)
@@ -1465,9 +1567,7 @@ bool obd_connect()
   }
   lcd.setCursor(0, 1);
   lcd.print("5BaudInit   DONE");
-
-  lcd.setCursor(0, 0);
-  lcd.print("CON:" + convert_bool_string(connected) + " AVA:" + String(obd.available()) + "     ");
+  display_statusbar();
   lcd.setCursor(0, 1);
   lcd.print("Read ECU data...");
 
@@ -1477,8 +1577,7 @@ bool obd_connect()
   }
   if (!simulation_mode_active && !readConnectBlocks(true))
   {
-    lcd.setCursor(0, 0);
-    lcd.print("CON:" + convert_bool_string(connected) + " AVA:" + String(obd.available()) + "     ");
+    display_statusbar();
     lcd.setCursor(0, 1);
     lcd.print("Read ECU data..N");
     // printError("readConnectBlocks() error");
@@ -1490,14 +1589,14 @@ bool obd_connect()
     Serial.println(F("Connected to ECU!"));
   }
   connected = true;
-  lcd.setCursor(0, 0);
-  lcd.print("CON:" + convert_bool_string(connected) + " AVA:" + String(obd.available()) + "     ");
+  display_statusbar();
   lcd.setCursor(0, 1);
   lcd.print("Read ECU data..Y");
   delay(44);
   // printDebug("Connection to ECU established!");
   lcd.setCursor(0, 1);
   lcd.print(" ECU connected! ");
+  display_statusbar();
   return true;
 }
 
@@ -1509,7 +1608,8 @@ bool connect()
 
     if (debug_mode_enabled)
     {
-      Serial.println(F("WARN: connection_attempts_counter > 0"));
+      Serial.print(F("WARN: connection_attempts_counter > 0. Is: "));
+      Serial.println(connection_attempts_counter);
     }
     // If you are here this means this is not the first time your MCU is trying to connect
   }
@@ -1769,7 +1869,7 @@ void loop()
   else
   {
     simulate_values();
-    delay(425);
+    delay(333);
   }
 
   if (engine_rpm > 4000)
