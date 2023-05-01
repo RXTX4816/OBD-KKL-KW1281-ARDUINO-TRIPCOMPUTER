@@ -46,6 +46,7 @@ uint8_t pin_tx = 2; // Transmit
 // Backend
 NewSoftwareSerial obd(pin_rx, pin_tx, false); // rx, tx, inverse logic = false
 unsigned long connect_time_start = millis();
+unsigned long timeout_to_add = 1000;
 int screen_current = 0;
 int menu_current = 0;
 String last_first_line = "";
@@ -369,7 +370,7 @@ void obdWrite(uint8_t data)
  */
 uint8_t obdRead()
 {
-  unsigned long timeout = millis() + 1000;
+  unsigned long timeout = millis() + timeout_to_add;
   while (!obd.available())
   {
     if (millis() >= timeout)
@@ -590,10 +591,10 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
     }
     lcd.setCursor(0, 1);
     lcd.print("ERR:size>maxsize");
-    delay(1000);
+    delay(2000);
     return false;
   }
-  unsigned long timeout = millis() + 1000;
+  unsigned long timeout = millis() + timeout_to_add;
   unsigned long timeout_last = timeout;
   while ((recvcount == 0) || (recvcount != size))
   {
@@ -685,7 +686,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         }
       }
       timeout_last = timeout;
-      timeout = millis() + 1000;
+      timeout = millis() + timeout_to_add;
     }
 
     if (millis() >= timeout)
@@ -1684,6 +1685,8 @@ void setup()
     setup();
 
   baud_rate = userinput_baudrate;
+  if (baud_rate < 4800)
+    timeout_to_add = 2000; // Extend timeout for 1200 and 2400 baud due to concerns about its low communication speed
   delay(555);
 
   lcd.clear();
@@ -1803,11 +1806,6 @@ void loop()
   int elpased_km_since_start = odometer - odometer_start;
   int fuel_burned_since_start = fuel_level_start - fuel_level;
 
-  //  10km     160sec   1L
-  //
-  //
-  //
-  //
   float fuel_per_100km = (100 / elpased_km_since_start) * fuel_burned_since_start;
   float fuel_per_hour = (3600 / elapsed_seconds_since_start) * fuel_burned_since_start;
 
