@@ -12,7 +12,16 @@ Simple trip computer for the Arduino Uno with a 16x2 Screen to display useful in
 This repo contains all necessary files. The only file containing code is [obdisplay.cpp](src/obdisplay.cpp). Buy an Arduino Uno, a 16x2 Screen to stick on the board and the Autodia K409 KKL OBD to USB cable (or similar).
 
 ## Setup
-Find the RX and TX connections on the AutoDia K409 board (open the OBD-site plastic) and cut them where appropiate. Refer to the [linked git repo](https://github.com/mkirbst/lupo-gti-tripcomputer-kw1281) for pictures and a bit more info. Hook the working side of both connections where you just cut to the RX and TX pins of your Arduino Uno (Watch out, since RX(Recieve) and TX(Transmit) depends on the perspective) by cutting the USB Male plug.  
+Find the RX and TX connections on the AutoDia K409 board (open the OBD-site plastic) and cut them where appropiate. 
+
+Here are the instructions:
+![](assets/FT232RQ pinout.jpg)
+
+![](assets/InkedKKL-cable-back_edited.jpg)
+
+![](assets/InkedKKL-cable-front_edited.jpg)
+
+Refer to the [linked git repo](https://github.com/mkirbst/lupo-gti-tripcomputer-kw1281) for pictures and a bit more info. Hook the working side of both connections where you just cut to the RX and TX pins of your Arduino Uno (Watch out, since RX(Recieve) and TX(Transmit) depends on the perspective) by cutting the USB Male plug.  
 
 Open the project with platformIO and flash it to your arduino. Done. Make sure to adjust the Baud Rate and find out which ECU Addresses are available in your car.
 

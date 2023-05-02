@@ -781,19 +781,19 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
       if (((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)))
       {
         obdWrite(data ^ 0xFF); // send complement ack
-        delay(25);
-        uint8_t echo = obdRead();
-        if (echo != (data ^ 0xFF))
-        {
-          if (debug_mode_enabled)
-          {
-            Serial.print(F("ERROR: invalid echo "));
-            Serial.println(echo, HEX);
-          }
+        //delay(25);
+        //uint8_t echo = obdRead();
+        //if (echo != (data ^ 0xFF))
+        //{
+        //  if (debug_mode_enabled)
+        //  {
+        //    Serial.print(F("ERROR: invalid echo "));
+        //    Serial.println(echo, HEX);
+        //  }
           // errorData++;
           // If ECHO is wrong just keep going
           // return false;
-        }
+        //}
       }
       timeout_last = timeout;
       timeout = millis() + timeout_to_add;
@@ -1516,6 +1516,7 @@ bool obd_connect()
 
     lcd.setCursor(0, 1);
     lcd.print("Handshake  ERROR");
+    display_statusbar();
     if (debug_mode_enabled)
     {
       Serial.println(F("KWP5BaudInit Handshake ERROR"));
@@ -1534,7 +1535,11 @@ bool obd_connect()
       Serial.print((uint8_t)response[2], HEX);
       Serial.println(F("]"));
     }
-    delay(444);
+    delay(1444);
+    display_statusbar();
+    lcd.setCursor(0, 1);
+    lcd.print("ECU: " + String((uint8_t)response[0], HEX) + " " + String((uint8_t)response[1], HEX) + " " + String((uint8_t)response[2], HEX) + "      ");
+    delay(3800);
     // printError("connect() KWPReceiveBlock error");
     return false;
   }
