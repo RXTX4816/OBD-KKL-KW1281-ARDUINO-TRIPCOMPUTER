@@ -15,7 +15,7 @@ This repo contains all necessary files. The only file containing code is [obdisp
 Find the RX and TX connections on the AutoDia K409 board (open the OBD-site plastic) and cut them where appropiate. 
 
 Here are the instructions:
-![](assets/FT232RQ pinout.jpg)
+![](assets/FT232RQ_pinout.jpg)
 
 ![](assets/InkedKKL-cable-back_edited.jpg)
 
