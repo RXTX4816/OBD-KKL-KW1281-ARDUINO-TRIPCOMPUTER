@@ -282,11 +282,9 @@ void init_menu_cockpit()
   lcd.print("C"); // Oil
   lcd.setCursor(13, 1);
   lcd.print("L"); // Fuel
-
 }
 void init_menu_experimental()
 {
-  
 }
 void init_menu_debug()
 {
@@ -414,6 +412,15 @@ void compute_values()
 void disconnect()
 {
   delay(3500);
+  if (debug_mode_enabled)
+  {
+    Serial.print(F("Disconnected. Block counter: "));
+    Serial.print(block_counter);
+    Serial.print(F(". Connected: "));
+    Serial.print(connected);
+    Serial.print(F(". Available: "));
+    Serial.println(obd.available());
+  }
   block_counter = 0;
   connected = false;
   connect_time_start = 0;
@@ -426,10 +433,7 @@ void disconnect()
   addr_current = -1;
   screen_current = 0;
   menu_current = 0;
-  if (debug_mode_enabled)
-  {
-    Serial.println(F("Disconnected"));
-  }
+  obd.end();
   //  TODO communication end procedure
 }
 
@@ -567,9 +571,13 @@ bool KWP5BaudInit(uint8_t addr)
 {
   if (debug_mode_enabled)
   {
-    Serial.println(F("---KWP 5 baud init"));
+    Serial.println(F("<-----5baud----->"));
   }
   send5baud(addr);
+  if (debug_mode_enabled)
+  {
+    Serial.println(F("</----5baud----->"));
+  }
   return true;
 }
 
@@ -678,17 +686,21 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
 
   if (debug_mode_enabled)
   {
-    Serial.print(F("---KWPReceive sz="));
+    Serial.print(F(" - KWPReceiveBlock. Size: "));
     Serial.print(size);
-    Serial.print(F(" block_counter="));
-    Serial.println(block_counter);
+    Serial.print(F(". Block counter: "));
+    Serial.print(block_counter);
+    Serial.print(F(". Init phase: "));
+    Serial.print(initialization_phase);
+    Serial.print(F(". Timeout duration: "));
+    Serial.println(timeout_to_add);
   }
 
   if (size > maxsize)
   {
     if (debug_mode_enabled)
     {
-      Serial.println("ERROR: invalid maxsize");
+      Serial.println(F(" - KWPReceiveBlock error: Invalid maxsize"));
     }
     lcd.setCursor(0, 1);
     lcd.print("ERR:size>maxsize");
@@ -704,9 +716,13 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
       data = obdRead();
       if (data == -1)
       {
+        if (debug_mode_enabled)
+        {
+          Serial.println(F(" - KWPReceiveBlock error: Nothing to listen to (Available=0) or empty buffer!"));
+        }
         lcd.setCursor(0, 1);
-        lcd.print("Timeout obdRead");
-        delay(1000);
+        lcd.print("ERROR data = -1 ");
+        delay(1700);
         return false;
       }
       s[recvcount] = data;
@@ -717,6 +733,10 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         {
           lcd.setCursor(0, 1);
           lcd.print("WARN block length");
+          if (debug_mode_enabled)
+          {
+            Serial.println(F(" - KWPReceiveBlock warn: Communication error occured, check block length! com_error set true."));
+          }
           // lcd.setCursor(0, 2);
           // lcd.print("Exp 15 Is " + String(data));
           com_error = true;
@@ -728,7 +748,11 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         }
         if (size > maxsize)
         {
-          //          Serial.println("ERROR: invalid maxsize");
+
+          if (debug_mode_enabled)
+          {
+            Serial.println(F(" - KWPReceiveBlock error: Invalid maxsize"));
+          }
           lcd.setCursor(0, 1);
           lcd.print("ERR:size>maxsize");
           delay(2000);
@@ -766,29 +790,45 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
             delay(1000);
             lcd.print("Exp:" + String(data) + " Is:" + String(block_counter) + "         ");
             delay(3333);
-            return false;
           }
+          if (debug_mode_enabled)
+          {
+            Serial.print(F(" - KWPReceiveBlock error: Invalid block counter. Expected: "));
+            Serial.print((uint8_t)data);
+            Serial.print(F(". Is: "));
+            Serial.println((uint8_t)block_counter);
+          }
+          return false;
         }
       }
       if (((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)))
       {
         obdWrite(data ^ 0xFF); // send complement ack
-        //delay(25);
-        //uint8_t echo = obdRead();
-        //if (echo != (data ^ 0xFF))
+        // delay(25);
+        // uint8_t echo = obdRead();
+        // if (echo != (data ^ 0xFF))
         //{
-        //  if (debug_mode_enabled)
-        //  {
-        //    Serial.print(F("ERROR: invalid echo "));
-        //    Serial.println(echo, HEX);
-        //  }
-          // errorData++;
-          // If ECHO is wrong just keep going
-          // return false;
+        //   if (debug_mode_enabled)
+        //   {
+        //     Serial.print(F("ERROR: invalid echo "));
+        //     Serial.println(echo, HEX);
+        //   }
+        //  errorData++;
+        //  If ECHO is wrong just keep going
+        //  return false;
         //}
       }
       timeout_last = timeout;
       timeout = millis() + timeout_to_add;
+      if (debug_mode_enabled)
+      {
+        Serial.print(F(" - KWPReceiveBlock info: Added timeout. ReceiveCount: "));
+        Serial.print((uint8_t)recvcount);
+        Serial.print(F(". Processed data: "));
+        Serial.print((uint8_t)data, HEX);
+        Serial.print(F(". ACK compl: "));
+        Serial.println(ackeachbyte);
+      }
     }
 
     if (millis() >= timeout)
@@ -796,7 +836,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
       unsigned long timeout_difference = abs(millis() - timeout);
       if (debug_mode_enabled)
       {
-        Serial.print(F("ERROR: timeout overstepped by "));
+        Serial.print(F(" - KWPReceiveBlock error: Timeout overstepped by "));
         Serial.print(timeout_difference);
         Serial.println(F(" ms"));
       }
@@ -867,7 +907,7 @@ bool readConnectBlocks(bool initialization_phase = false)
   }
   if (debug_mode_enabled)
   {
-    Serial.print("label=");
+    Serial.print(F("label="));
     Serial.println(info);
   }
   return true;
@@ -1449,6 +1489,11 @@ float random_float()
 
 bool obd_connect()
 {
+  if (debug_mode_enabled)
+  {
+    Serial.println("------------------------------");
+    Serial.println(" - Attempting to connect to ECU -");
+  }
   block_counter = 0;
 
   lcd.clear();
@@ -1469,21 +1514,12 @@ bool obd_connect()
   }
 
   lcd.setCursor(0, 1);
-  lcd.print("OBD.begin      ");
-  if (debug_mode_enabled)
-  {
-    Serial.println(F("OBD.begin()"));
-  }
+  lcd.print("Init...         ");
   obd.begin(baud_rate); // Baud rate 9600 for Golf 4/Bora or 10400 in weird cases
-  lcd.print("OBD.begin  DONE");
   display_statusbar();
-  delay(144);
-  display_statusbar();
-  lcd.setCursor(0, 1);
-  lcd.print("5BaudInit      ");
   if (debug_mode_enabled)
   {
-    Serial.print(F("KWP5BaudInit on addr "));
+    Serial.print(F(" - KWP5BaudInit on addr 0x"));
     Serial.println(addr_selected, HEX);
   }
   if (!simulation_mode_active && !KWP5BaudInit(addr_selected))
@@ -1492,27 +1528,25 @@ bool obd_connect()
     lcd.print("5BaudInit  ERROR");
     if (debug_mode_enabled)
     {
-      Serial.println(F("KWP5BaudInit ERROR"));
+      Serial.println(F(" - KWP5BaudInit ERROR"));
     }
     return false;
   }
   display_statusbar();
 
   // printDebug("Init ADDR " + String(addr_selected) + " with " + baud_rate + " baud");
-  char response[3]; // Response should be 0x55, 0x01, 0x8A
+  char response[3] = {0, 0, 0}; // Response should be 0x55, 0x01, 0x8A
   int response_size = 3;
-  lcd.setCursor(0, 1);
-  lcd.print("Handshake       ");
-  if (!simulation_mode_active && !KWPReceiveBlock(response, 3, response_size, true))
+  if (!simulation_mode_active && !KWPReceiveBlock(response, 3, response_size, -1, true))
   {
 
     lcd.setCursor(0, 1);
-    lcd.print("Handshake  ERROR");
+    lcd.print("Handshake error");
     display_statusbar();
     if (debug_mode_enabled)
     {
-      Serial.println(F("KWP5BaudInit Handshake ERROR"));
-      Serial.println(F("THE FOLLOWING MAY HAVE NO CORRELATION TO THE ERROR"));
+      Serial.println(F(" - KWPReceiveBlock Handshake error (DEFAULT= 0x00 0x00 0x00)"));
+      Serial.print(F("Response from ECU: "));
       Serial.print(F("Expected ["));
       Serial.print(0x55, HEX);
       Serial.print(F(" "));
@@ -1536,8 +1570,6 @@ bool obd_connect()
     return false;
   }
   display_statusbar();
-  lcd.setCursor(0, 1);
-  lcd.print("Handshake    ...");
   if (!simulation_mode_active && ((((uint8_t)response[0]) != 0x55) || (((uint8_t)response[1]) != 0x01) || (((uint8_t)response[2]) != 0x8A))) // 85 1 138
   {
     display_statusbar();
@@ -1545,7 +1577,8 @@ bool obd_connect()
     lcd.print("Handshake  WRONG");
     if (debug_mode_enabled)
     {
-      Serial.println(F("Handshake Error!"));
+      Serial.println(F(" - KWPReceiveBlock Handshake error (DEFAULT= 0x00 0x00 0x00)"));
+      Serial.print(F(" - Response from ECU: "));
       Serial.print(F("Expected ["));
       Serial.print(0x55, HEX);
       Serial.print(F(" "));
@@ -1618,43 +1651,11 @@ bool connect()
 
     if (debug_mode_enabled)
     {
-      Serial.print(F("WARN: connection_attempts_counter > 0. Is: "));
+      Serial.print(F("This is connection attempt number "));
       Serial.println(connection_attempts_counter);
     }
     // If you are here this means this is not the first time your MCU is trying to connect
   }
-
-  // Connect to ECU
-  connection_attempts_counter++;
-  if (!obd_connect())
-  {
-    disconnect();
-    return false;
-  }
-  connect_time_start = millis();
-  menu_switch = true;
-  return true;
-}
-
-void setup()
-{
-
-  Serial.begin(9600);
-  // char lcd_buff[17];
-  lcd.begin(16, 2); // col, rows
-  lcd.clear();
-
-  // Pins
-  pinMode(pin_tx, OUTPUT); // TX
-  digitalWrite(pin_tx, HIGH);
-
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("    O B D");
-  lcd.setCursor(0, 1);
-  lcd.print(" D I S P L A Y ");
-
-  delay(1444);
 
   // Startup configuration // 0 = false, 1 = true, -1 = undefined for booleans as int8_t
   int8_t userinput_debug_mode = -1; // Whether to print Serial messages
@@ -1671,6 +1672,10 @@ void setup()
   lcd.print("Debug mode on?");
   lcd.setCursor(0, 1);
   lcd.print("<-- Y      N -->");
+  if (connection_attempts_counter > 0)
+  {
+    userinput_debug_mode = debug_mode_enabled;
+  }
   while (userinput_debug_mode == -1)
   {
     int user_input = analogRead(0);
@@ -1698,7 +1703,7 @@ void setup()
   }
   else
   {
-    setup();
+    return false;
   }
   delay(555);
 
@@ -1707,6 +1712,10 @@ void setup()
   lcd.print("Select con mode:");
   lcd.setCursor(0, 1);
   lcd.print("<- ECU    SIM ->");
+  if (connection_attempts_counter > 0)
+  {
+    userinput_simulation_mode = simulation_mode_active;
+  }
   while (userinput_simulation_mode == -1)
   {
     int user_input = analogRead(0);
@@ -1734,7 +1743,7 @@ void setup()
   }
   else
   {
-    setup();
+    return false;
   }
   delay(555);
 
@@ -1792,7 +1801,7 @@ void setup()
       save_check = true;
   }
   if (!save_check)
-    setup();
+    return false;
 
   baud_rate = userinput_baudrate;
   if (baud_rate < 4800)
@@ -1833,7 +1842,7 @@ void setup()
   }
   else
   {
-    setup();
+    return false;
   }
   delay(555);
 
@@ -1852,6 +1861,37 @@ void setup()
     Serial.print(addr_selected, HEX);
     Serial.println(F(" HEX"));
   }
+
+  // Connect to ECU
+  connection_attempts_counter++;
+  if (!obd_connect())
+  {
+    disconnect();
+    return false;
+  }
+  connect_time_start = millis();
+  menu_switch = true;
+  return true;
+}
+
+void setup()
+{
+
+  Serial.begin(9600);
+  lcd.begin(16, 2); // col, rows
+  // Pins
+  pinMode(pin_tx, OUTPUT); // TX
+  digitalWrite(pin_tx, HIGH);
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("    O B D");
+  lcd.setCursor(0, 1);
+  lcd.print(" D I S P L A Y ");
+
+  delay(1444);
+
+  
 }
 
 void loop()
