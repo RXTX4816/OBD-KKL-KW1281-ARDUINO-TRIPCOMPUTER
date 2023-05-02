@@ -81,14 +81,6 @@ bool com_warning_last = com_warning; // Whether a communication warning occured 
 Just uncomment and add the logic in readSensors(). This can also be done with VCDS or other tools.*/
 byte k[4] = {0, 0, 0, 0};
 float v[4] = {-1, -1, -1, -1};
-byte first_k = 0;
-float first_v = -1;
-byte second_k = 0;
-float second_v = -1;
-byte third_k = 0;
-float third_v = -1;
-byte fourth_k = 0;
-float fourth_v = -1;
 
 /* ADDR_INSTRUMENTS measurement group entries, chronologically 0-3 in each group */
 // Group 1
@@ -2103,12 +2095,12 @@ void loop()
       second_line = "-> results";
       break;
     case 1:
-      first_line = "1 " + String(first_k) + " " + first_v;
-      second_line = "2 " + String(second_k) + " " + second_v;
+      first_line = "1 " + String(k[0]) + " " + v[0];
+      second_line = "2 " + String(k[1]) + " " + v[1];
       break;
     case 2:
-      first_line = "3 " + String(third_k) + " " + third_v;
-      second_line = "4 " + String(fourth_k) + " " + fourth_v;
+      first_line = "3 " + String(k[2]) + " " + v[2];
+      second_line = "4 " + String(k[3]) + " " + v[3];
       break;
     default:
       screen_current = 0;
