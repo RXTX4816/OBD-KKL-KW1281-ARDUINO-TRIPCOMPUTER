@@ -1226,7 +1226,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         Serial.print(F(". Processed data: "));
         Serial.print((uint8_t)data, HEX);
         Serial.print(F(". ACK compl: "));
-        Serial.println(ackeachbyte);
+        Serial.println(((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)));
       }
     }
 
