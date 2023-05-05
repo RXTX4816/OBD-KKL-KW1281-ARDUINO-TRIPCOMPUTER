@@ -870,7 +870,7 @@ void obdWrite(uint8_t data)
     Serial.print(data, HEX);
     Serial.print(F(" Delaying by "));
     Serial.print(obd_write_pre_delay);
-    Serial.print(F(" ms before sending"));
+    Serial.println(F(" ms before sending"));
   }
   delay(obd_write_pre_delay);
   obd.write(data);
