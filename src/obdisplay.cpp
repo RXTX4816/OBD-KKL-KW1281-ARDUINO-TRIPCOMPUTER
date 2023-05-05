@@ -30,9 +30,10 @@ uint8_t ecu_addr = 17;
 
 /* ECU Addresses. See info.txt in root directory for details on the values of each group. */
 const uint8_t ADDR_ENGINE = 0x01;
-const uint8_t ADDR_ABS_BRAKES = 0x03; // UNUSED
-const uint8_t ADDR_AUTO_HVAC = 0x08;  // UNUSED
+const uint8_t ADDR_ABS_BRAKES = 0x03;
+const uint8_t ADDR_AUTO_HVAC = 0x08;
 const uint8_t ADDR_INSTRUMENTS = 0x17;
+const uint8_t ADDR_CENTRAL_CONV = 0x46;
 
 /* Pins */
 uint8_t pin_rx = 3; // Receive
@@ -44,8 +45,18 @@ uint8_t pin_tx = 2; // Transmit
 NewSoftwareSerial obd(pin_rx, pin_tx, false); // rx, tx, inverse logic = false
 unsigned long connect_time_start = millis();
 unsigned long timeout_to_add = 1100; // Wikipedia
+unsigned long button_timeout = 111;
 int screen_current = 0;
 int menu_current = 0;
+// ---------------Menu Screen-----------
+uint8_t menu_cockpit_screen = 0;
+uint8_t menu_cockpit_screen_max = 4;
+uint8_t menu_experimental_screen = 0;
+uint8_t menu_experimental_screen_max = 64;
+uint8_t menu_settings_screen = 0;
+uint8_t menu_settings_screen_max = 10;
+bool menu_screen_switch = false;
+// -------------------------------------
 String last_first_line = "";
 String last_second_line = "";
 unsigned long endTime = 0;
@@ -80,14 +91,14 @@ float v[4] = {-1, -1, -1, -1};
 
 /* ADDR_INSTRUMENTS measurement group entries, chronologically 0-3 in each group */
 // Group 1
-int vehicle_speed = 0;
-int vehicle_speed_last = vehicle_speed;
-int engine_rpm = 0;
-int engine_rpm_last = engine_rpm; // Also in ADDR_Engine Group 1 0th
-int oil_pressure_min = 0;
-int oil_pressure_min_last = oil_pressure_min;
-int time_ecu = 0;
-int time_ecu_last = time_ecu;
+uint16_t vehicle_speed = 0;
+uint16_t vehicle_speed_last = vehicle_speed;
+uint16_t engine_rpm = 0;
+uint16_t engine_rpm_last = engine_rpm; // Also in ADDR_Engine Group 1 0th
+uint16_t oil_pressure_min = 0;
+uint16_t oil_pressure_min_last = oil_pressure_min;
+uint32_t time_ecu = 0;
+uint32_t time_ecu_last = time_ecu;
 // Group 2
 unsigned long odometer = 0;
 unsigned long odometer_last = odometer;
@@ -254,6 +265,78 @@ void decrement_menu()
   }
   menu_switch = true;
 }
+void increment_menu_cockpit_screen()
+{
+  if (menu_cockpit_screen >= menu_cockpit_screen_max)
+  {
+    menu_cockpit_screen = 0;
+  }
+  else
+  {
+    menu_cockpit_screen++;
+  }
+  menu_screen_switch = true;
+}
+void decrement_menu_cockpit_screen()
+{
+  if (menu_cockpit_screen == 0)
+  {
+    menu_cockpit_screen = menu_cockpit_screen_max;
+  }
+  else
+  {
+    menu_cockpit_screen--;
+  }
+  menu_screen_switch = true;
+}
+void increment_menu_experimental_screen()
+{
+  if (menu_experimental_screen >= menu_experimental_screen_max)
+  {
+    menu_experimental_screen = 0;
+  }
+  else
+  {
+    menu_experimental_screen++;
+  }
+  menu_screen_switch = true;
+}
+void decrement_menu_experimental_screen()
+{
+  if (menu_experimental_screen == 0)
+  {
+    menu_experimental_screen = menu_experimental_screen_max;
+  }
+  else
+  {
+    menu_experimental_screen--;
+  }
+  menu_screen_switch = true;
+}
+void increment_menu_settings_screen()
+{
+  if (menu_settings_screen >= menu_settings_screen_max)
+  {
+    menu_settings_screen = 0;
+  }
+  else
+  {
+    menu_settings_screen++;
+  }
+  menu_screen_switch = true;
+}
+void decrement_menu_settings_screen()
+{
+  if (menu_settings_screen == 0)
+  {
+    menu_settings_screen = menu_settings_screen_max;
+  }
+  else
+  {
+    menu_settings_screen--;
+  }
+  menu_screen_switch = true;
+}
 void init_statusbar()
 {
   lcd.setCursor(0, 0);
@@ -294,34 +377,296 @@ void display_statusbar()
 }
 void init_menu_cockpit()
 {
-  lcd.setCursor(4, 0);
-  lcd.print("KMH");
-  lcd.setCursor(13, 0);
-  lcd.print("RPM");
-  lcd.setCursor(3, 1);
-  lcd.print("C"); // Coolant
-  lcd.setCursor(8, 1);
-  lcd.print("C"); // Oil
-  lcd.setCursor(13, 1);
-  lcd.print("L"); // Fuel
+  switch (addr_selected)
+  {
+  case ADDR_ENGINE:
+    // Addr not supported
+    lcd.setCursor(0, 0);
+    lcd.print("Addr ");
+    lcd.print(String(addr_selected, HEX));
+    lcd.setCursor(0, 1);
+    lcd.print("not supported!");
+    break;
+  case ADDR_ABS_BRAKES:
+    // Addr not supported
+    lcd.setCursor(0, 0);
+    lcd.print("Addr ");
+    lcd.print(String(addr_selected, HEX));
+    lcd.setCursor(0, 1);
+    lcd.print("not supported!");
+    break;
+  case ADDR_AUTO_HVAC:
+    // Addr not supported
+    lcd.setCursor(0, 0);
+    lcd.print("Addr ");
+    lcd.print(String(addr_selected, HEX));
+    lcd.setCursor(0, 1);
+    lcd.print("not supported!");
+    break;
+  case ADDR_INSTRUMENTS:
+    switch (menu_cockpit_screen)
+    {
+    case 0:
+      lcd.setCursor(4, 0);
+      lcd.print("KMH");
+      lcd.setCursor(13, 0);
+      lcd.print("RPM");
+      lcd.setCursor(3, 1);
+      lcd.print("C"); // Coolant
+      lcd.setCursor(8, 1);
+      lcd.print("C"); // Oil
+      lcd.setCursor(13, 1);
+      lcd.print("L"); // Fuel
+      break;
+    case 1:
+    case 2:
+    case 3:
+    case 4:
+    default:
+      lcd.setCursor(0, 0);
+      lcd.print("Screen ");
+      lcd.print(menu_cockpit_screen);
+      lcd.setCursor(0, 1);
+      lcd.print("not supported!");
+      break;
+    }
+    break;
+  case ADDR_CENTRAL_CONV:
+  default:
+    // Addr not supported
+    lcd.setCursor(0, 0);
+    lcd.print("Addr ");
+    lcd.print(String(addr_selected, HEX));
+    lcd.setCursor(0, 1);
+    lcd.print("not supported!");
+    break;
+  }
 }
 void init_menu_experimental()
 {
+  lcd.setCursor(0, 0);
+  lcd.print("G:    Group menu");
+  lcd.setCursor(0, 1);
+  lcd.print("not supported!");
 }
 void init_menu_debug()
 {
+  // Addr not supported
+  lcd.setCursor(0, 0);
+  lcd.print("Debug menu");
+  lcd.setCursor(0, 1);
+  lcd.print("not supported!");
 }
 void init_menu_dtc()
 {
+  // Addr not supported
+  lcd.setCursor(0, 0);
+  lcd.print("DTC menu");
+  lcd.setCursor(0, 1);
+  lcd.print("not supported!");
 }
 void init_menu_settings()
 {
+  switch (menu_settings_screen)
+  {
+  case 0:
+    // Exit
+    lcd.setCursor(0, 0);
+    lcd.print("Exit ECU:");
+    lcd.setCursor(0, 1);
+    lcd.print("< Press select >");
+    break;
+  case 1:
+    // Debug mode
+  case 2:
+  case 3:
+  case 4:
+  case 5:
+  case 6:
+  case 7:
+  case 8:
+  case 9:
+  case 10:
+  default:
+    lcd.setCursor(0, 0);
+    lcd.print("Menu screen ");
+    lcd.print(menu_settings_screen);
+    lcd.setCursor(0, 1);
+    lcd.print("not supported!");
+    break;
+  }
 }
 void display_menu_cockpit()
 {
+  switch (addr_selected)
+  {
+  case ADDR_ENGINE:
+    break;
+  case ADDR_ABS_BRAKES:
+    break;
+  case ADDR_AUTO_HVAC:
+    break;
+  case ADDR_INSTRUMENTS:
+    switch (menu_cockpit_screen)
+    {
+    case 0:
+      if (vehicle_speed != vehicle_speed_last)
+      {
+        lcd.setCursor(0, 0);
+        lcd.print("   ");
+        lcd.setCursor(0, 0);
+        if (vehicle_speed < 1000)
+        {
+          lcd.print(vehicle_speed);
+        }
+        else
+        {
+          lcd.print("ERR");
+        }
+        vehicle_speed_last = vehicle_speed;
+      }
+      if (engine_rpm != engine_rpm_last)
+      {
+        lcd.setCursor(8, 0);
+        lcd.print("    ");
+        lcd.setCursor(8, 0);
+        if (engine_rpm < 10000)
+        {
+          lcd.print(engine_rpm);
+        }
+        else
+        {
+          lcd.print("ERRO");
+        }
+        engine_rpm_last = engine_rpm;
+      }
+      if (coolant_temp != coolant_temp_last)
+      {
+        lcd.setCursor(0, 1);
+        lcd.print("   ");
+        lcd.setCursor(0, 1);
+        if (coolant_temp < 1000)
+        {
+          lcd.print(coolant_temp);
+        }
+        else
+        {
+          lcd.print("ER ");
+        }
+
+        coolant_temp_last = coolant_temp;
+      }
+      if (oil_temp != oil_temp_last)
+      {
+        lcd.setCursor(5, 1);
+        lcd.print("   ");
+        lcd.setCursor(5, 1);
+        if (oil_temp < 1000)
+        {
+          lcd.print(oil_temp);
+        }
+        else
+        {
+          lcd.print("ER ");
+        }
+
+        oil_temp_last = oil_temp;
+      }
+      if (fuel_level != fuel_level_last)
+      {
+        lcd.setCursor(10, 1);
+        lcd.print("  ");
+        lcd.setCursor(10, 1);
+        if (fuel_level < 100)
+        {
+          lcd.print(fuel_level);
+        }
+        else
+        {
+          lcd.print("ER");
+        }
+
+        fuel_level_last = fuel_level;
+      }
+      break;
+
+    case 1:
+      break;
+    case 2:
+      break;
+    case 3:
+      break;
+    case 4:
+      break;
+    default:
+      break;
+    }
+
+    if (oil_level_ok != oil_level_ok_last)
+    {
+
+      oil_level_ok_last = oil_level_ok;
+    }
+    if (fuel_per_100km != fuel_per_100km_last)
+    {
+
+      fuel_per_100km_last = fuel_per_100km;
+    }
+    if (oil_pressure_min != oil_pressure_min_last)
+    {
+      oil_pressure_min_last = oil_pressure_min;
+    }
+
+    if (odometer != odometer_last)
+    {
+      odometer_last = odometer;
+    }
+    if (time_ecu != time_ecu_last)
+    {
+      time_ecu_last = time_ecu;
+    }
+    if (fuel_sensor_resistance != fuel_sensor_resistance_last)
+    {
+      fuel_sensor_resistance_last = fuel_sensor_resistance;
+    }
+    if (ambient_temp != ambient_temp_last)
+    {
+      ambient_temp_last = ambient_temp;
+    }
+    if (elapsed_seconds_since_start != elapsed_seconds_since_start_last)
+    {
+      elapsed_seconds_since_start_last = elapsed_seconds_since_start;
+    }
+    if (elpased_km_since_start != elpased_km_since_start_last)
+    {
+      elpased_km_since_start_last = elpased_km_since_start;
+    }
+    if (fuel_burned_since_start != fuel_burned_since_start_last)
+    {
+      fuel_burned_since_start_last = fuel_burned_since_start;
+    }
+    if (fuel_per_hour != fuel_per_hour_last)
+    {
+      fuel_per_hour_last = fuel_per_hour;
+    }
+    break;
+  case ADDR_CENTRAL_CONV:
+  default:
+    // Addr not supported
+    break;
+  }
 }
 void display_menu_experimental()
 {
+  lcd.setCursor(3, 0);
+  if (group_current <= 64)
+  {
+    lcd.print(group_current);
+  }
+  else
+  {
+    lcd.print("ER");
+  }
 }
 void display_menu_debug()
 {
@@ -331,6 +676,25 @@ void display_menu_dtc()
 }
 void display_menu_settings()
 {
+  switch (menu_settings_screen)
+  {
+  case 0:
+    // Exit
+    break;
+  case 1:
+    // Debug mode
+  case 2:
+  case 3:
+  case 4:
+  case 5:
+  case 6:
+  case 7:
+  case 8:
+  case 9:
+  case 10:
+  default:
+    break;
+  }
 }
 
 bool engine_rpm_switch = true;
@@ -422,7 +786,6 @@ void compute_values()
 void disconnect()
 {
   obd.end();
-  delay(3500);
   if (debug_mode_enabled)
   {
     Serial.print(F("Disconnected. Block counter: "));
@@ -444,6 +807,7 @@ void disconnect()
   addr_selected = 0x00;
   screen_current = 0;
   menu_current = 0;
+  delay(2222);
   //  TODO communication end procedure
 }
 
@@ -1977,360 +2341,142 @@ void loop()
     // TODO
   }
 
-  String first_line = "                ";
-  String second_line = "                ";
+  compute_values();
 
-  String vehicle_speed_string = String(vehicle_speed);
-  String engine_rpm_string = String(engine_rpm);
-  String coolant_temp_string = String(coolant_temp);
-  String oil_temp_string = String(oil_temp);
-  String fuel_level_string = String(fuel_level);
-  String block_counter_string = String(block_counter);
-
-  int vehicle_speed_string_length = strlen(vehicle_speed_string.c_str());
-  int engine_rpm_string_length = strlen(engine_rpm_string.c_str());
-  int coolant_temp_string_length = strlen(coolant_temp_string.c_str());
-  int oil_temp_string_length = strlen(oil_temp_string.c_str());
-  int fuel_level_string_length = strlen(fuel_level_string.c_str());
-  int block_counter_string_length = strlen(block_counter_string.c_str());
-
-  float elapsed_seconds_since_start = ((millis() - connect_time_start) / 1000);
-  int elpased_km_since_start = odometer - odometer_start;
-  int fuel_burned_since_start = fuel_level_start - fuel_level;
-
-  float fuel_per_100km = (100 / elpased_km_since_start) * fuel_burned_since_start;
-  float fuel_per_hour = (3600 / elapsed_seconds_since_start) * fuel_burned_since_start;
-
-  switch (menu_current)
-  {
-  case 0:
-    // Default menu, tachometer etc
-    switch (screen_current)
-    {
-    case 0:
-      for (int i = 0; i < vehicle_speed_string_length; i++)
-      {
-        if (i + 1 >= vehicle_speed_string_length)
-        {
-          first_line.setCharAt(2, vehicle_speed_string.charAt(i));
-        }
-        else if (i + 2 >= vehicle_speed_string_length)
-        {
-          first_line.setCharAt(1, vehicle_speed_string.charAt(i));
-        }
-        else
-        {
-          first_line.setCharAt(0, vehicle_speed_string.charAt(i));
-        }
-      }
-      first_line.setCharAt(4, 'K');
-      first_line.setCharAt(5, 'M');
-      first_line.setCharAt(6, 'H');
-      for (int i = 0; i < engine_rpm_string_length; i++)
-      {
-        if (i + 1 >= engine_rpm_string_length)
-        {
-          first_line.setCharAt(11, engine_rpm_string.charAt(i));
-        }
-        else if (i + 2 >= engine_rpm_string_length)
-        {
-          first_line.setCharAt(10, engine_rpm_string.charAt(i));
-        }
-        else if (i + 3 >= engine_rpm_string_length)
-        {
-          first_line.setCharAt(9, engine_rpm_string.charAt(i));
-        }
-        else
-        {
-          first_line.setCharAt(8, engine_rpm_string.charAt(i));
-        }
-      }
-      if (engine_rpm > 4000)
-      {
-        first_line.setCharAt(12, '-');
-      }
-      first_line.setCharAt(13, 'R');
-      first_line.setCharAt(14, 'P');
-      first_line.setCharAt(15, 'M');
-
-      for (int i = 0; i < coolant_temp_string_length; i++)
-      {
-        if (i + 1 >= coolant_temp_string_length)
-        {
-          second_line.setCharAt(2, coolant_temp_string.charAt(i));
-        }
-        else if (i + 2 >= coolant_temp_string_length)
-        {
-          second_line.setCharAt(1, coolant_temp_string.charAt(i));
-        }
-        else
-        {
-          second_line.setCharAt(0, coolant_temp_string.charAt(i));
-        }
-      }
-      second_line.setCharAt(3, 'C');
-      for (int i = 0; i < oil_temp_string_length; i++)
-      {
-        if (i + 1 >= oil_temp_string_length)
-        {
-          second_line.setCharAt(7, oil_temp_string.charAt(i));
-        }
-        else if (i + 2 >= oil_temp_string_length)
-        {
-          second_line.setCharAt(6, oil_temp_string.charAt(i));
-        }
-        else
-        {
-          second_line.setCharAt(5, oil_temp_string.charAt(i));
-        }
-      }
-      second_line.setCharAt(8, 'C');
-      for (int i = 0; i < fuel_level_string_length; i++)
-      {
-        if (i + 1 >= fuel_level_string_length)
-        {
-          second_line.setCharAt(12, fuel_level_string.charAt(i));
-        }
-        else
-        {
-          second_line.setCharAt(11, fuel_level_string.charAt(i));
-        }
-      }
-      second_line.setCharAt(13, 'L');
-      // second_line = String(coolant_temp) + "C " + String(oil_temp) + "C " + floatToString(fuel_level) + "L";
-      break;
-    case 1:
-      for (int i = 0; i < vehicle_speed_string_length; i++)
-      {
-        if (i + 1 >= vehicle_speed_string_length)
-        {
-          first_line.setCharAt(2, vehicle_speed_string.charAt(i));
-        }
-        else if (i + 2 >= vehicle_speed_string_length)
-        {
-          first_line.setCharAt(1, vehicle_speed_string.charAt(i));
-        }
-        else
-        {
-          first_line.setCharAt(0, vehicle_speed_string.charAt(i));
-        }
-      }
-      first_line.setCharAt(4, 'K');
-      first_line.setCharAt(5, 'M');
-      first_line.setCharAt(6, 'H');
-      for (int i = 0; i < engine_rpm_string_length; i++)
-      {
-        if (i + 1 >= engine_rpm_string_length)
-        {
-          first_line.setCharAt(11, engine_rpm_string.charAt(i));
-        }
-        else if (i + 2 >= engine_rpm_string_length)
-        {
-          first_line.setCharAt(10, engine_rpm_string.charAt(i));
-        }
-        else if (i + 3 >= engine_rpm_string_length)
-        {
-          first_line.setCharAt(9, engine_rpm_string.charAt(i));
-        }
-        else
-        {
-          first_line.setCharAt(8, engine_rpm_string.charAt(i));
-        }
-      }
-      if (engine_rpm > 4000)
-      {
-        first_line.setCharAt(12, '-');
-      }
-      first_line.setCharAt(13, 'R');
-      first_line.setCharAt(14, 'P');
-      first_line.setCharAt(15, 'M');
-
-      second_line = String(fuel_per_100km) + " | " + String(fuel_per_hour) + "           ";
-      for (int i = 0; i < block_counter_string_length; i++)
-      {
-        if (i + 1 >= block_counter_string_length)
-        {
-          second_line.setCharAt(15, block_counter_string.charAt(i));
-        }
-        else if (i + 2 >= block_counter_string_length)
-        {
-          second_line.setCharAt(14, block_counter_string.charAt(i));
-        }
-        else
-        {
-          second_line.setCharAt(13, block_counter_string.charAt(i));
-        }
-      }
-      break;
-    default:
-      screen_current = 0;
-      return;
-      break;
-    }
-    break;
-  case 1:
-    // Group select menu
-    switch (screen_current)
-    {
-    case 0:
-      first_line = "Group: " + String(group_current) + "            ";
-      second_line = "-> results";
-      break;
-    case 1:
-      first_line = "1 " + String(k[0]) + " " + v[0];
-      second_line = "2 " + String(k[1]) + " " + v[1];
-      break;
-    case 2:
-      first_line = "3 " + String(k[2]) + " " + v[2];
-      second_line = "4 " + String(k[3]) + " " + v[3];
-      break;
-    default:
-      screen_current = 0;
-      return;
-      break;
-    }
-    break;
-  case 2:
-    // MSG select menu
-    first_line = "2/NA";
-    second_line = "";
-    return;
-    break;
-  case 3:
-    // DTC Error menu
-    first_line = "3/NA";
-    second_line = "";
-    return;
-    break;
-  default:
-    menu_current = 0;
-    screen_current = 0;
-    return;
-    break;
-  }
-
-  // Draw text
-  if (!first_line.equals(last_first_line))
-  {
-    lcd.setCursor(0, 0);
-    lcd.print(first_line + "                ");
-    last_first_line = first_line;
-  }
-  if (!second_line.equals(last_second_line))
-  {
-    lcd.setCursor(0, 1);
-    lcd.print(second_line + "                ");
-    last_second_line = second_line;
-  }
-
-  bool button_pressed = false;
   // Button input
+  bool button_pressed = false;
   if (millis() > endTime)
   {
     // User input, menu selection
     int user_input = analogRead(0);
-    // User wants to change things a little bit
     if (user_input < 60)
     {
       // Right button
-      // next screen
-      // menu.next_screen();
-      // delay(500);
       button_pressed = true;
-      screen_current++;
+      increment_menu();
     }
-    else if (user_input < 200)
-    {
-      // Up button
-      //
-      button_pressed = true;
-      // group_current++;
-      menu_current++;
-      screen_current = 0;
-    }
-    else if (user_input < 400)
-    {
-      // Down button
-      //
-      /*if (group_current > 1)
-      {
-        group_current--;
-
-        delay(500);
-      }*/
-      button_pressed = true;
-      menu_current--;
-      screen_current = 0;
-    }
-    else if (user_input < 600)
+    else if (user_input < 600 && user_input >= 400)
     {
       // Left button
-      // previous screen
-      // menu.previous_screen();
-      // delay(500);
       button_pressed = true;
-      screen_current--;
+      decrement_menu();
     }
-    else if (user_input < 800)
+    else
     {
-      // Select button
-      //
-      button_pressed = true;
-      /*if (addr_current == 0x01)
+      switch (menu)
       {
-
-        lcd.clear();
-        if (readSensors(group_current))
+      case 0:
+        if (user_input >= 60 && user_input < 200)
         {
-          if (vehicle_speed > v_max)
-          {
-            v_max = vehicle_speed;
-            EEPROM.write(v_max_addr, v_max); // 3.3ms
-          }
-          /*lcd.setCursor(0, 0);
-            lcd.print(floatToString(supply_voltage) + "V                      ");
-            lcd.setCursor(0, 1);
-            lcd.print(coolant_temp + "°C                     ");
-          lcd.setCursor(0, 1);
-          lcd.print("Sensors read");
+          // Up button
+          button_pressed = true;
+          increment_menu_cockpit_screen();
+        }
+        else if (user_input >= 200 && user_input < 400)
+        {
+          // Down button
+          button_pressed = true;
+          decrement_menu_cockpit_screen();
+        }
+        break;
+      case 1:
+        if (user_input >= 60 && user_input < 200)
+        {
+          // Up button
+          button_pressed = true;
+          increment_menu_experimental_screen();
+        }
+        else if (user_input >= 200 && user_input < 400)
+        {
+          // Down button
+          button_pressed = true;
+          decrement_menu_experimental_screen();
+        }
+        break;
+      case 2:
+        break;
+      case 3:
+        break;
+      case 4:
+        if (user_input >= 60 && user_input < 200)
+        {
+          // Up button
+          button_pressed = true;
+          increment_menu_settings_screen();
+        }
+        else if (user_input >= 200 && user_input < 400)
+        {
+          // Down button
+          button_pressed = true;
+          decrement_menu_settings_screen();
         }
         else
         {
-          lcd.setCursor(0, 1);
-          lcd.print("ERR SENSORS");
-          delay(1000);
-          lcd.clear();
-          return;
+          if (menu_settings_screen == 0)
+          {
+            if (user_input >= 600 && user_input < 800)
+            {
+              // Select button = Exit/Reconnect
+              lcd.clear();
+              lcd.setCursor(0, 0);
+              lcd.print("Exiting...");
+              disconnect();
+            }
+          }
         }
+        break;
       }
-      else
-      {
-        lcd.setCursor(0, 0);
-        lcd.print("             ");
-        lcd.setCursor(0, 1);
-        lcd.print("ERR: ECU NO SUPP");
-        delay(2000);
-        lcd.clear();
-        return;
-      }*/
+    }
+
+    if (button_pressed)
+    {
+      endTime = millis() + button_timeout;
     }
   }
 
-  if (button_pressed)
+  // Perform menu switch or update values on current menu
+  if (menu_switch || menu_screen_switch)
   {
-    endTime = millis() + 500;
+    lcd.clear();
+    switch (menu)
+    {
+    case 0:
+      init_menu_cockpit();
+      break;
+    case 1:
+      init_menu_experimental();
+      break;
+    case 2:
+      init_menu_debug();
+      break;
+    case 3:
+      init_menu_dtc();
+      break;
+    case 4:
+      init_menu_settings();
+      break;
+    }
+    menu_switch = false;
+    menu_screen_switch = false;
   }
 
-  // if (millis() - lastMillis > period) {
-  // char buf[16];
-  // time_passed_text = (char*) ltoa(lastMillis, buf, 10);
-  // lastMillis = millis();
-  // menu.update();
-  // }
-
-  // lcd.setCursor(0, 0);
-  // lcd.print("Pressed Key:");
-
-  // lcd.setCursor(0, 1);
-  // lcd.print(selected_user_input);
+  // Display current menu and screen
+  switch (menu)
+  {
+  case 0:
+    display_menu_cockpit();
+    break;
+  case 1:
+    display_menu_experimental();
+    break;
+  case 2:
+    display_menu_debug();
+    break;
+  case 3:
+    display_menu_dtc();
+    break;
+  case 4:
+    display_menu_settings();
+    break;
+  }
 }
