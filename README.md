@@ -9,21 +9,28 @@ For the Arduino Mega with a TFT LCD Display Shield look into [this repo](https:/
 ## Welcome
 Simple trip computer for the Arduino Uno with a 16x2 Screen to display useful information in all VAG vehicles with the MARELLI 4LV ECU (VAG Number: 036906034AM). This includes most Golf mk4/Jetta/Bora from the years around 2000 that are limited to the K-Line communication and the KW1281 protocol. Newer cars since around 2005 began to adapt OBD-2 with CAN communication, that can be accessed through a ELM327 controller. No such simple controller exists currently for KKL.
 
-This repo contains all necessary files. The only file containing code is [obdisplay.cpp](src/obdisplay.cpp). Buy an Arduino Uno, a 16x2 Screen to stick on the board and the Autodia K409 KKL OBD to USB cable (or similar).
+This repo contains all necessary files. The only file containing code is [obdisplay.cpp](src/obdisplay.cpp). 
 
-## Setup
-Find the RX and TX connections on the AutoDia K409 board (open the OBD-site plastic) and cut them where appropiate. 
+## Setup Instructions
+Requirements: Arduino Uno, 16x2 Liquidcrystal Display Shield, Autodia K409 KKL OBD to USB cable
 
-Here are the instructions:
+Look inside the OBD cable and note which MCU is placed (E.g. FT232R or FT232RQ), get its datasheet, find the RXD and TXD pins, solder the first visible contact point to your Arduino digital pins of your liking (Here: 2 and 3) and cut both lines after the contact point. Don't forget to solder the +5V and GROUND from your Arduino to the OBD cable MCU (Just use the USB stripped male on the platine) since without it no communication is possible. You should have 4 cables connected between your OBD cable and your Arduino and a seperate USB or power souce input to power the Arduino and access its Serial debug communication.
+
+See the pictures below for visual guidance.
+
 ![](assets/FT232RQ_pinout.jpg)
 
 ![](assets/InkedKKL-cable-back_edited.jpg)
 
 ![](assets/InkedKKL-cable-front_edited.jpg)
 
-Refer to the [linked git repo](https://github.com/mkirbst/lupo-gti-tripcomputer-kw1281) for pictures and a bit more info. Hook the working side of both connections where you just cut to the RX and TX pins of your Arduino Uno (Watch out, since RX(Recieve) and TX(Transmit) depends on the perspective) by cutting the USB Male plug.  
+Refer to the [linked git repo](https://github.com/mkirbst/lupo-gti-tripcomputer-kw1281) for pictures and a bit more info. 
 
-Open the project with platformIO and flash it to your arduino. Done. Make sure to adjust the Baud Rate and find out which ECU Addresses are available in your car.
+Open the project with platformIO and a programming environment of your chase (VSCode) and flash it to your arduino. If your ECU differs from the 036906034AM ECU you may need to assess your Label files and rewrite a portion of the code to work with your ECU. See below for more information on label files. Each Address may have a different baud rate (E.g. 0x01 baud 9600 while 0x17 baud 10400). Older ECU's (<1997) may use very slow baud rates like 1200 or 2400, while newer ECU's (>1997) most often use baud rates around 9600 and 10400. I have not encountered baud 4800 yet.
+
+## KWP1281 Communication
+
+TODO: Add information about the KWP1281 protocol.
 
 ## Label Files
 The measurement groups of each ECU Addres contain 4 values. Each different version of each car may have a different order of values and different values to obtain. To know which groups display which values you either need to search for your cars Label File "xxx-xxx-xxx.LBL" or hook up VCDS (or any other software to display measurement groups) and record your display while clicking through the groups to get a rough image what these values correspond to.
@@ -85,18 +92,20 @@ Thanks to many wonderful projects for making this project less painful than it a
 ## Caution
 This is an early version and I'm only releasing it to help on anyones journey with this VAG mess. You need to manually remove connections and solder cables on an OBD to USB board and hook them up to the Arduino Uno TX and RX pins. You need to turn ignition ON for the ECU to start. This software should not break anything in the ECU, since only the measure groups are accessed. Depending on your car, you may need to adapt this code for various values. 
 
+Be careful when working with the Airbag Address 0x15 since in some rare circumstances when an electrical failure is given in the airbag system and DTC error codes are deleted the airbag can deploy on affected ECU's. I would hardly advise not to touch the Airbag controller with selfmade code.
+
 This project may work with other Arduino's, Displays, OBD cables and VAG cars.
 
 ## Problems
-The OBD 12V from the car should be enough to power on the Arduino, but in my case the +12V and Ground lines of the USB cable do nothing, so just hook it up like a smartphone through the cigarrete lighter USB.
 
-If you have questions feel free to send me a message. Will accept all merge requests if they work. 
+If you have questions feel free to open an issue and paste your Serial log there. 
+
+Contributions are welcomed. 
 
 ## Future
 Will add sometime in the future:
 - DTC Error reading and DTC Error deletion.
 - LEDs + Sound on critical warnings (Oil pressure, temperature too high, DTC errors)
-- Correct disconnect procedure. Currently there is none, the microcontroller just stops sending. 
-- Bigger Display, maybe with touch even.
+- Correct disconnect procedure. Currently there is none, the microcontroller just stops sending and waits for >1100ms for the ECU to refresh. 
 
 
