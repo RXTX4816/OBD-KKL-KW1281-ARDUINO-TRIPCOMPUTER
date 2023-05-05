@@ -28,6 +28,10 @@ bool debug_mode_enabled = false;
 bool compute_stats = false; // Whether statistic values should be computed (Fuel/100km etc.) Remember division is expensive on these processors.
 uint8_t ecu_addr = 17;
 
+// ----------------------------------------------------------------------------------------------------------------------
+uint16_t OBD_WRITE_PRE_DELAY_DEFAULT = 5; // CHANGE THIS TO LONGER PRE DELAY IN CASE OF LOW BAUDRATES. STAY BELOW 1100MS.
+// ----------------------------------------------------------------------------------------------------------------------
+
 /* ECU Addresses. See info.txt in root directory for details on the values of each group. */
 const uint8_t ADDR_ENGINE = 0x01;
 const uint8_t ADDR_ABS_BRAKES = 0x03;
@@ -838,24 +842,37 @@ String is_connected_as_string()
  */
 void obdWrite(uint8_t data)
 {
+  uint16_t obd_write_pre_delay = 5; // Standard
+
+  if (OBD_WRITE_PRE_DELAY_DEFAULT != 5)
+  {
+    obd_write_pre_delay = OBD_WRITE_PRE_DELAY_DEFAULT;
+  }
+  else
+  {
+    if (baud_rate >= 10400)
+      obd_write_pre_delay = 5;
+    else if (baud_rate >= 9600)
+      obd_write_pre_delay = 10;
+    else if (baud_rate >= 4800)
+      obd_write_pre_delay = 20;
+    else if (baud_rate >= 2400)
+      obd_write_pre_delay = 40;
+    else if (baud_rate >= 1200)
+      obd_write_pre_delay = 100;
+    else
+      obd_write_pre_delay = 100;
+  }
+
   if (debug_mode_enabled)
   {
     Serial.print(F("-MCU: "));
-    Serial.println(data, HEX);
+    Serial.print(data, HEX);
+    Serial.print(F(" Delaying by "));
+    Serial.print(obd_write_pre_delay);
+    Serial.print(F(" ms before sending"));
   }
-
-  if (baud_rate >= 10400)
-    delay(5);
-  else if (baud_rate >= 9600)
-    delay(10);
-  else if (baud_rate >= 4800)
-    delay(15);
-  else if (baud_rate >= 2400)
-    delay(20);
-  else if (baud_rate >= 1200)
-    delay(25);
-  else
-    delay(30);
+  delay(obd_write_pre_delay);
   obd.write(data);
 }
 
