@@ -2420,7 +2420,30 @@ void loop()
               lcd.clear();
               lcd.setCursor(0, 0);
               lcd.print("Exiting...");
+              if (debug_mode_enabled)
+              {
+                Serial.println(F("Performing manual KWP exit..."));
+              }
+              // Perform KWP end output block
+              delay(15);
+              char s[64];
+              sprintf(s, "\x03%c\x06\x03", block_counter);
+              if (!KWPSendBlock(s, 4))
+              {
+                if (debug_mode_enabled)
+                {
+                  Serial.println(F("Performing manual KWP exit... Failed. Exiting anyway."));
+                }
+              }
+              else
+              {
+                if (debug_mode_enabled)
+                {
+                  Serial.println(F("Performing manual KWP exit... Succesful. Your ECU is very grateful for this."));
+                }
+              }
               disconnect();
+              return;
             }
           }
         }
