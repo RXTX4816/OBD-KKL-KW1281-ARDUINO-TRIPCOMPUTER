@@ -1101,7 +1101,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
   unsigned long timeout = millis() + timeout_to_add;
   unsigned long timeout_last = timeout;
   uint16_t temp_iteration_counter = 0;
-  while ((recvcount == 0) || (recvcount != size))
+  while ((recvcount == 0) || (recvcount < size))
   {
     while (obd.available())
     {
@@ -1124,6 +1124,116 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         delay(1700);
         return false;
       }
+      recvcount++;
+
+      if (initialization_phase && recvcount > maxsize)
+      {
+        if (debug_mode_enabled)
+        {
+          Serial.print(F(" - - - Init com error. Recievecount:"));
+          Serial.print(recvcount);
+          Serial.print(F(" data:0x"));
+          Serial.println(data, HEX);
+        }
+
+        if (recvcount == 4)
+        {
+          if (data == 0xFF)
+          {
+            if (debug_mode_enabled)
+            {
+              Serial.println(F(" - - - Expected, skipping"));
+            }
+          }
+          else
+          {
+            if (debug_mode_enabled)
+            {
+              Serial.println(F(" - - - Unknown data sent by ECU! Aborting..."));
+            }
+            return false;
+          }
+        }
+        else if (recvcount == 5)
+        {
+          if (data == 0x0F)
+          {
+            if (debug_mode_enabled)
+            {
+              Serial.println(F(" - - - Expected, skipping"));
+            }
+          }
+          else
+          {
+            if (debug_mode_enabled)
+            {
+              Serial.println(F(" - - - Unknown data sent by ECU! Aborting..."));
+            }
+            return false;
+          }
+        }
+        else if (recvcount == 6)
+        {
+          if (data == 0x0F)
+          {
+            if (debug_mode_enabled)
+            {
+              Serial.println(F(" - - - Expected, acknowledge"));
+            }
+            delay(125);
+            obdWrite(data ^ 0xFF);
+          }
+          else
+          {
+            if (debug_mode_enabled)
+            {
+              Serial.println(F(" - - - Unknown data sent by ECU! Aborting..."));
+            }
+            return false;
+          }
+        }
+        else if (recvcount == 7 || recvcount == 8)
+        {
+          if (data == 0x55 || data == 0x01)
+          {
+            if (debug_mode_enabled)
+            {
+              Serial.println(F(" - - - Expected, skipping"));
+            }
+          }
+          else
+          {
+            if (debug_mode_enabled)
+            {
+              Serial.println(F(" - - - Unknown data sent by ECU! Aborting..."));
+            }
+            return false;
+          }
+        }
+        else if (recvcount == 9)
+        {
+          if (data == 0x8A)
+          {
+            if (debug_mode_enabled)
+            {
+              Serial.println(F(" - - - Expected, skipping"));
+            }
+            delay(125);
+            obdWrite(data ^ 0xFF);
+          }
+          else
+          {
+            if (debug_mode_enabled)
+            {
+              Serial.println(F(" - - - Unknown data sent by ECU! Aborting..."));
+            }
+            return false;
+          }
+        }
+        delay(33);
+        continue;
+      }
+
       s[recvcount] = data;
       recvcount++;
       if ((size == 0) && (recvcount == 1))
@@ -1226,7 +1336,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         Serial.print(F(". Processed data: "));
         Serial.print((uint8_t)data, HEX);
         Serial.print(F(". ACK compl: "));
-        Serial.println(ackeachbyte);
+        Serial.println(((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)));
       }
     }
 
