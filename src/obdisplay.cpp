@@ -50,7 +50,7 @@ const uint8_t KWP_MODE_READGROUP = 2;   // Read only specified group from connec
 NewSoftwareSerial obd(pin_rx, pin_tx, false); // rx, tx, inverse logic = false
 unsigned long connect_time_start = millis();
 unsigned long timeout_to_add = 1100; // Wikipedia
-unsigned long button_timeout = 111;
+unsigned long button_timeout = 222;
 int screen_current = 0;
 int menu_current = 0;
 uint8_t kwp_mode = KWP_MODE_READSENSORS;
@@ -490,19 +490,6 @@ void init_menu_settings()
     lcd.print("KWP Mode:");
     lcd.setCursor(0, 1);
     lcd.print("<              >");
-    lcd.setCursor(4, 1);
-    switch (kwp_mode)
-    {
-    case KWP_MODE_ACK:
-      lcd.print("ACK");
-      break;
-    case KWP_MODE_READGROUP:
-      lcd.print("GROUP");
-      break;
-    case KWP_MODE_READSENSORS:
-      lcd.print("SENSOR");
-      break;
-    }
     break;
   case 2:
   case 3:
@@ -522,7 +509,7 @@ void init_menu_settings()
     break;
   }
 }
-void display_menu_cockpit()
+void display_menu_cockpit(bool force_update = false)
 {
   switch (addr_selected)
   {
@@ -536,7 +523,7 @@ void display_menu_cockpit()
     switch (menu_cockpit_screen)
     {
     case 0:
-      if (vehicle_speed != vehicle_speed_last)
+      if (vehicle_speed != vehicle_speed_last || force_update)
       {
         lcd.setCursor(0, 0);
         lcd.print("   ");
@@ -551,7 +538,7 @@ void display_menu_cockpit()
         }
         vehicle_speed_last = vehicle_speed;
       }
-      if (engine_rpm != engine_rpm_last)
+      if (engine_rpm != engine_rpm_last || force_update)
       {
         lcd.setCursor(8, 0);
         lcd.print("    ");
@@ -566,7 +553,7 @@ void display_menu_cockpit()
         }
         engine_rpm_last = engine_rpm;
       }
-      if (coolant_temp != coolant_temp_last)
+      if (coolant_temp != coolant_temp_last || force_update)
       {
         lcd.setCursor(0, 1);
         lcd.print("   ");
@@ -582,7 +569,7 @@ void display_menu_cockpit()
 
         coolant_temp_last = coolant_temp;
       }
-      if (oil_temp != oil_temp_last)
+      if (oil_temp != oil_temp_last || force_update)
       {
         lcd.setCursor(5, 1);
         lcd.print("   ");
@@ -598,7 +585,7 @@ void display_menu_cockpit()
 
         oil_temp_last = oil_temp;
       }
-      if (fuel_level != fuel_level_last)
+      if (fuel_level != fuel_level_last || force_update)
       {
         lcd.setCursor(10, 1);
         lcd.print("  ");
@@ -628,50 +615,50 @@ void display_menu_cockpit()
       break;
     }
 
-    if (oil_level_ok != oil_level_ok_last)
+    if (oil_level_ok != oil_level_ok_last || force_update)
     {
 
       oil_level_ok_last = oil_level_ok;
     }
-    if (fuel_per_100km != fuel_per_100km_last)
+    if (fuel_per_100km != fuel_per_100km_last || force_update)
     {
 
       fuel_per_100km_last = fuel_per_100km;
     }
-    if (oil_pressure_min != oil_pressure_min_last)
+    if (oil_pressure_min != oil_pressure_min_last || force_update)
     {
       oil_pressure_min_last = oil_pressure_min;
     }
 
-    if (odometer != odometer_last)
+    if (odometer != odometer_last || force_update)
     {
       odometer_last = odometer;
     }
-    if (time_ecu != time_ecu_last)
+    if (time_ecu != time_ecu_last || force_update)
     {
       time_ecu_last = time_ecu;
     }
-    if (fuel_sensor_resistance != fuel_sensor_resistance_last)
+    if (fuel_sensor_resistance != fuel_sensor_resistance_last || force_update)
     {
       fuel_sensor_resistance_last = fuel_sensor_resistance;
     }
-    if (ambient_temp != ambient_temp_last)
+    if (ambient_temp != ambient_temp_last || force_update)
     {
       ambient_temp_last = ambient_temp;
     }
-    if (elapsed_seconds_since_start != elapsed_seconds_since_start_last)
+    if (elapsed_seconds_since_start != elapsed_seconds_since_start_last || force_update)
     {
       elapsed_seconds_since_start_last = elapsed_seconds_since_start;
     }
-    if (elpased_km_since_start != elpased_km_since_start_last)
+    if (elpased_km_since_start != elpased_km_since_start_last || force_update)
     {
       elpased_km_since_start_last = elpased_km_since_start;
     }
-    if (fuel_burned_since_start != fuel_burned_since_start_last)
+    if (fuel_burned_since_start != fuel_burned_since_start_last || force_update)
     {
       fuel_burned_since_start_last = fuel_burned_since_start;
     }
-    if (fuel_per_hour != fuel_per_hour_last)
+    if (fuel_per_hour != fuel_per_hour_last || force_update)
     {
       fuel_per_hour_last = fuel_per_hour;
     }
@@ -700,7 +687,7 @@ void display_menu_debug()
 void display_menu_dtc()
 {
 }
-void display_menu_settings()
+void display_menu_settings(bool force_update = false)
 {
   switch (menu_settings_screen)
   {
@@ -709,7 +696,7 @@ void display_menu_settings()
     break;
   case 1:
     // KWP mode
-    if (kwp_mode != kwp_mode_last)
+    if (kwp_mode != kwp_mode_last || force_update)
     {
       lcd.setCursor(4, 1);
       lcd.print("       ");
@@ -2720,6 +2707,8 @@ void loop()
                 {
                   Serial.println(F("Performing manual KWP exit... Failed. Exiting anyway."));
                 }
+                lcd.setCursor(0, 1);
+                lcd.print("error!");
               }
               else
               {
@@ -2727,6 +2716,8 @@ void loop()
                 {
                   Serial.println(F("Performing manual KWP exit... Succesful. Your ECU is very grateful for this."));
                 }
+                lcd.setCursor(0, 1);
+                lcd.print("success! :)");
               }
               disconnect();
               return;
@@ -2747,7 +2738,8 @@ void loop()
                 kwp_mode = KWP_MODE_ACK;
                 break;
               }
-              if (debug_mode_enabled) {
+              if (debug_mode_enabled)
+              {
                 Serial.print(F("Switched kwp_mode to "));
                 Serial.print(kwp_mode);
               }
@@ -2776,6 +2768,7 @@ void loop()
     {
     case 0:
       init_menu_cockpit();
+      display_menu_cockpit(true);
       break;
     case 1:
       init_menu_experimental();
@@ -2788,6 +2781,7 @@ void loop()
       break;
     case 4:
       init_menu_settings();
+      display_menu_settings(true);
       break;
     }
     menu_switch = false;
