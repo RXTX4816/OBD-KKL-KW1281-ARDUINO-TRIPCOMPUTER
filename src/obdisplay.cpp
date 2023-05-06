@@ -41,6 +41,11 @@ uint8_t pin_tx = 2; // Transmit
 
 /* --------------------------EDIT BELOW ONLY TO FIX STUFF-------------------------------------- */
 
+// Constants
+const uint8_t KWP_MODE_ACK = 0;         // Send ack block to keep connection alive
+const uint8_t KWP_MODE_READSENSORS = 1; // Read all sensors from the connected ADDR
+const uint8_t KWP_MODE_READGROUP = 2;   // Read only specified group from connected ADDR
+
 // Backend
 NewSoftwareSerial obd(pin_rx, pin_tx, false); // rx, tx, inverse logic = false
 unsigned long connect_time_start = millis();
@@ -48,6 +53,9 @@ unsigned long timeout_to_add = 1100; // Wikipedia
 unsigned long button_timeout = 111;
 int screen_current = 0;
 int menu_current = 0;
+uint8_t kwp_mode = KWP_MODE_READSENSORS;
+uint8_t kwp_mode_last = kwp_mode;
+uint8_t kwp_group = 1; // Dont go to group 0 its not good.
 // ---------------Menu Screen-----------
 uint8_t menu_cockpit_screen = 0;
 uint8_t menu_cockpit_screen_max = 4;
@@ -86,8 +94,9 @@ bool com_warning_last = com_warning; // Whether a communication warning occured 
 
 /* Temporary Measurements for if you want to find out which values show up in your groups in a desired ECU address.
 Just uncomment and add the logic in readSensors(). This can also be done with VCDS or other tools.*/
-byte k[4] = {0, 0, 0, 0};
-float v[4] = {-1, -1, -1, -1};
+byte k_temp[4] = {0, 0, 0, 0};
+float v_temp[4] = {-1, -1, -1, -1};
+String unit_temp[4] = {"ERR", "ERR", "ERR", "ERR"};
 
 /* ADDR_INSTRUMENTS measurement group entries, chronologically 0-3 in each group */
 // Group 1
@@ -477,7 +486,11 @@ void init_menu_settings()
     lcd.print("< Press select >");
     break;
   case 1:
-    // Debug mode
+    lcd.setCursor(0, 0);
+    lcd.print("KWP Mode:");
+    lcd.setCursor(0, 1);
+    lcd.print("<              >");
+    break;
   case 2:
   case 3:
   case 4:
@@ -682,7 +695,26 @@ void display_menu_settings()
     // Exit
     break;
   case 1:
-    // Debug mode
+    // KWP mode
+    if (kwp_mode != kwp_mode_last)
+    {
+      lcd.setCursor(4, 1);
+      lcd.print("       ");
+      lcd.setCursor(4, 1);
+      switch (kwp_mode)
+      {
+      case KWP_MODE_ACK:
+        lcd.print("ACK");
+        break;
+      case KWP_MODE_READGROUP:
+        lcd.print("GROUP");
+        break;
+      case KWP_MODE_READSENSORS:
+        lcd.print("SENSOR");
+        break;
+      }
+      kwp_mode_last = kwp_mode;
+    }
   case 2:
   case 3:
   case 4:
@@ -1349,8 +1381,9 @@ bool readSensors(int group)
 
   for (int i = 0; i <= 3; i++)
   {
-    k[i] = 0;
-    v[i] = -1;
+    k_temp[i] = 0;
+    v_temp[i] = -1;
+    unit_temp[i] = "ERR";
   }
 
   char s[64];
@@ -1687,6 +1720,13 @@ bool readSensors(int group)
     }
 
     /*
+     * Update k_temp and v_temp and unit_temp
+     */
+    k_temp[idx] = k;
+    v_temp[idx] = v;
+    unit_temp[idx] = units;
+
+    /*
      *  Add here the values from your label file for each address.
      */
     switch (addr_selected)
@@ -1888,6 +1928,212 @@ bool readSensors(int group)
   }
   sensorCounter++;*/
   return true;
+}
+
+/**
+ * KW1281 procedure to send a simple acknowledge block to keep the connection alive
+ */
+bool send_ack(bool expect_response_ack = true)
+{
+  char s[64];
+  sprintf(s, "\x03%c\x09\x03", block_counter);
+  if (!KWPSendBlock(s, 4))
+  {
+    return false;
+  }
+  if (expect_response_ack)
+  {
+    int size2 = 0;
+    if (!KWPReceiveBlock(s, 4, size2))
+    {
+      return false;
+    }
+    if (s[0] != 0x03 || s[2] != 0x09 || s[3] != 0x03)
+    {
+      if (debug_mode_enabled)
+      {
+        Serial.print(F(" - Error receiving ACK procedure got s[0]-s[3]: "));
+        Serial.print(s[0], HEX);
+        Serial.print(F(" "));
+        Serial.print(s[1], HEX);
+        Serial.print(F(" "));
+        Serial.print(s[2], HEX);
+        Serial.print(F(" "));
+        Serial.print(s[3], HEX);
+        Serial.println(F(" should be 03 BC 09 03"));
+      }
+    }
+    if (com_error)
+    {
+      // Kommunikationsfehler
+      char s[64];
+      sprintf(s, "\x03%c\x00\x03", block_counter);
+      if (!KWPSendBlock(s, 4))
+      {
+        com_error = false;
+        return false;
+      }
+      block_counter = 0;
+      com_error = false;
+      int size2 = 0;
+      if (!KWPReceiveBlock(s, 64, size2))
+      {
+        return false;
+      }
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * KW1281 procedure to read DTC error codes
+ */
+bool read_DTC_codes()
+{
+  if (debug_mode_enabled)
+  {
+    Serial.print(F(" - Read DTC error codes on ADDR 0x"));
+    Serial.println(addr_selected, HEX);
+  }
+  char s[64];
+  sprintf(s, "\x03%c\x07\x03", block_counter);
+  if (!KWPSendBlock(s, 4))
+    return false;
+  int size = 0;
+  if (!KWPReceiveBlock(s, 64, size, 1))
+  {
+    return false;
+  }
+  if (com_error)
+  {
+    // Kommunikationsfehler
+    char s[64];
+    sprintf(s, "\x03%c\x00\x03", block_counter);
+    if (!KWPSendBlock(s, 4))
+    {
+      com_error = false;
+      return false;
+    }
+    block_counter = 0;
+    com_error = false;
+    int size2 = 0;
+    if (!KWPReceiveBlock(s, 64, size2))
+    {
+      return false;
+    }
+    return false;
+  }
+
+  uint8_t block_length = s[0];
+  uint8_t dtc_error_amount = (uint8_t)((block_length - 3) / 3);
+  if (dtc_error_amount < 1 || dtc_error_amount > 4)
+  {
+    if (debug_mode_enabled)
+    {
+      Serial.println(F(" - Read DTC error codes wrong amount of DTC errors calculated!"));
+    }
+  }
+  if (s[2] != 0xFC)
+  {
+    if (debug_mode_enabled)
+    {
+      Serial.println(F(" - Read DTC error codes wrong block title!"));
+    }
+  }
+
+  uint16_t dtc_errors[4] = {0x0000, 0x0000, 0x0000, 0x0000};
+  uint8_t dtc_status_bytes[4] = {0x00, 0x00, 0x00, 0x00};
+
+  for (int i = 0; i < dtc_error_amount; i++)
+  {
+    uint8_t byte_high = s[3 + 3 * i];
+    uint8_t byte_low = s[3 + 3 * i + 1];
+    uint8_t byte_status = s[3 + 3 * i + 2];
+    dtc_errors[i] = byte_low | (byte_high << 8);
+    dtc_status_bytes[i] = byte_status;
+  }
+
+  send_ack(false);
+
+  s[64];
+  size = 0;
+  if (!KWPReceiveBlock(s, 64, size, 1))
+  {
+    return false;
+  }
+  if (com_error)
+  {
+    // Kommunikationsfehler
+    char s[64];
+    sprintf(s, "\x03%c\x00\x03", block_counter);
+    if (!KWPSendBlock(s, 4))
+    {
+      com_error = false;
+      return false;
+    }
+    block_counter = 0;
+    com_error = false;
+    int size2 = 0;
+    if (!KWPReceiveBlock(s, 64, size2))
+    {
+      return false;
+    }
+    return false;
+  }
+  if (s[2] == 0xFC)
+  {
+    // TODO
+  }
+  else if (s[2] == 0x09)
+  {
+    int size2 = 0;
+    if (!KWPReceiveBlock(s, 4, size2))
+    {
+      return false;
+    }
+    if (s[0] != 0x03 || s[2] != 0x09 || s[3] != 0x03)
+    {
+      if (debug_mode_enabled)
+      {
+        Serial.print(F(" - Error receiving ACK procedure got s[0]-s[3]: "));
+        Serial.print(s[0], HEX);
+        Serial.print(F(" "));
+        Serial.print(s[1], HEX);
+        Serial.print(F(" "));
+        Serial.print(s[2], HEX);
+        Serial.print(F(" "));
+        Serial.print(s[3], HEX);
+        Serial.println(F(" should be 03 BC 09 03"));
+      }
+    }
+    if (com_error)
+    {
+      // Kommunikationsfehler
+      char s[64];
+      sprintf(s, "\x03%c\x00\x03", block_counter);
+      if (!KWPSendBlock(s, 4))
+      {
+        com_error = false;
+        return false;
+      }
+      block_counter = 0;
+      com_error = false;
+      int size2 = 0;
+      if (!KWPReceiveBlock(s, 64, size2))
+      {
+        return false;
+      }
+      return false;
+    }
+  }
+}
+
+/**
+ * KW1281 procedure to delete DTC error codes
+ */
+bool delete_DTC_codes()
+{
 }
 
 bool obd_connect()
@@ -2312,14 +2558,40 @@ void loop()
   // Update values
   if (!simulation_mode_active)
   {
-    // Read the sensor groups
-    for (int i = 1; i <= 3; i++)
+
+    switch (kwp_mode)
     {
-      if (!readSensors(i))
+    case KWP_MODE_ACK:
+      if (!send_ack())
       {
         disconnect();
         return;
       }
+      break;
+    case KWP_MODE_READGROUP:
+      if (!readSensors(kwp_group))
+      {
+        disconnect();
+        return;
+      }
+      break;
+    case KWP_MODE_READSENSORS:
+      // Read the sensor groups
+      for (int i = 1; i <= 3; i++)
+      {
+        if (!readSensors(i))
+        {
+          disconnect();
+          return;
+        }
+      }
+      break;
+    default:
+      if (debug_mode_enabled)
+      {
+        Serial.println(F("!!!!!!!!kwp_mode undefined, exiting!!!!!!!!"));
+      }
+      break;
     }
   }
   else
@@ -2412,8 +2684,9 @@ void loop()
         }
         else
         {
-          if (menu_settings_screen == 0)
+          switch (menu_settings_screen)
           {
+          case 0:
             if (user_input >= 600 && user_input < 800)
             {
               // Select button = Exit/Reconnect
@@ -2445,6 +2718,27 @@ void loop()
               disconnect();
               return;
             }
+            break;
+          case 1:
+            if (user_input >= 600 && user_input < 800)
+            {
+              switch (kwp_mode)
+              {
+              case KWP_MODE_ACK:
+                kwp_mode = KWP_MODE_READGROUP;
+                break;
+              case KWP_MODE_READGROUP:
+                kwp_mode = KWP_MODE_READSENSORS;
+                break;
+              case KWP_MODE_READSENSORS:
+                kwp_mode = KWP_MODE_ACK;
+                break;
+              }
+              button_pressed = true;
+            }
+            break;
+          default:
+            break;
           }
         }
         break;
