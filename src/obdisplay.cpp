@@ -490,6 +490,19 @@ void init_menu_settings()
     lcd.print("KWP Mode:");
     lcd.setCursor(0, 1);
     lcd.print("<              >");
+    lcd.setCursor(4, 1);
+    switch (kwp_mode)
+    {
+    case KWP_MODE_ACK:
+      lcd.print("ACK");
+      break;
+    case KWP_MODE_READGROUP:
+      lcd.print("GROUP");
+      break;
+    case KWP_MODE_READSENSORS:
+      lcd.print("SENSOR");
+      break;
+    }
     break;
   case 2:
   case 3:
@@ -2733,6 +2746,10 @@ void loop()
               case KWP_MODE_READSENSORS:
                 kwp_mode = KWP_MODE_ACK;
                 break;
+              }
+              if (debug_mode_enabled) {
+                Serial.print(F("Switched kwp_mode to "));
+                Serial.print(kwp_mode);
               }
               button_pressed = true;
             }
