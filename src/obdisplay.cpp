@@ -16,7 +16,6 @@ Ignore compile warnings.
 //  Third party libraries
 #include "LiquidCrystal.h"
 #include "NewSoftwareSerial.h"
-#include "bigInt.h"
 
 /* --------------------------EDIT THE FOLLOWING TO YOUR LIKING-------------------------------------- */
 
@@ -381,9 +380,25 @@ void init_menu_cockpit()
 {
   switch (addr_selected)
   {
-  /* case ADDR_ENGINE:
+  case ADDR_ENGINE:
+    switch (menu_cockpit_screen)
+    {
+    case 0:
+      lcd.setCursor(15, 0);
+      lcd.print("V");
+      lcd.setCursor(13, 1);
+      lcd.print("TBa");
+      break;
+    default:
+      lcd.setCursor(0, 0);
+      lcd.print("Screen ");
+      lcd.print(menu_cockpit_screen);
+      lcd.setCursor(0, 1);
+      lcd.print("not supported!");
+      break;
+    }
     break;
-  case ADDR_ABS_BRAKES:
+  /*case ADDR_ABS_BRAKES:
     break;
   case ADDR_AUTO_HVAC:
     break; */
@@ -403,6 +418,17 @@ void init_menu_cockpit()
       lcd.print("L"); // Fuel
       break;
     case 1:
+      lcd.setCursor(2, 0);
+      lcd.print("OL");
+      lcd.setCursor(7, 0);
+      lcd.print("OP");
+      lcd.setCursor(13, 0);
+      lcd.print("AT");
+      lcd.setCursor(6, 1);
+      lcd.print("KM");
+      lcd.setCursor(13, 1);
+      lcd.print("FSR");
+      break;
     case 2:
     case 3:
     case 4:
@@ -481,6 +507,11 @@ void display_menu_cockpit(bool force_update = false)
   switch (addr_selected)
   {
   case ADDR_ENGINE:
+    lcd.setCursor(0, 0);
+    lcd.print(voltage);
+    lcd.setCursor(0, 1);
+    lcd.print(tb_angle);
+
     break;
   case ADDR_ABS_BRAKES:
     break;
@@ -569,8 +600,63 @@ void display_menu_cockpit(bool force_update = false)
         fuel_level_last = fuel_level;
       }
       break;
-
     case 1:
+      if (oil_level_ok != oil_level_ok_last || force_update)
+      {
+        lcd.setCursor(0, 0);
+        lcd.print(" ");
+        lcd.setCursor(0, 0);
+        if (oil_level_ok > 0)
+          lcd.print("Y");
+        else
+          lcd.print("N");
+        oil_level_ok_last = oil_level_ok;
+      }
+      if (oil_pressure_min != oil_pressure_min_last || force_update)
+      {
+        lcd.setCursor(5, 0);
+        lcd.print(" ");
+        lcd.setCursor(5, 0);
+        if (oil_pressure_min > 0)
+          lcd.print("Y");
+        else
+          lcd.print("N");
+        oil_pressure_min_last = oil_pressure_min;
+      }
+      if (ambient_temp != ambient_temp_last || force_update)
+      {
+        lcd.setCursor(10, 0);
+        lcd.print("  ");
+        lcd.setCursor(10, 0);
+        if (ambient_temp < 100)
+          lcd.print(ambient_temp);
+        else
+          lcd.print("ER");
+        ambient_temp_last = ambient_temp;
+      }
+
+      if (odometer != odometer_last || force_update)
+      {
+        lcd.setCursor(0, 1);
+        lcd.print("      ");
+        lcd.setCursor(0, 1);
+        if (odometer < 1000000)
+          lcd.print(odometer);
+        else
+          lcd.print("ERROR!");
+        odometer_last = odometer;
+      }
+      if (fuel_sensor_resistance != fuel_sensor_resistance_last || force_update)
+      {
+        lcd.setCursor(9, 1);
+        lcd.print("   ");
+        lcd.setCursor(9, 1);
+        if (fuel_sensor_resistance < 1000)
+          lcd.print(fuel_sensor_resistance);
+        else
+          lcd.print("ERR");
+        fuel_sensor_resistance_last = fuel_sensor_resistance;
+      }
       break;
     case 2:
       break;
@@ -582,36 +668,14 @@ void display_menu_cockpit(bool force_update = false)
       break;
     }
 
-    if (oil_level_ok != oil_level_ok_last || force_update)
-    {
-
-      oil_level_ok_last = oil_level_ok;
-    }
     if (fuel_per_100km != fuel_per_100km_last || force_update)
     {
 
       fuel_per_100km_last = fuel_per_100km;
     }
-    if (oil_pressure_min != oil_pressure_min_last || force_update)
-    {
-      oil_pressure_min_last = oil_pressure_min;
-    }
-
-    if (odometer != odometer_last || force_update)
-    {
-      odometer_last = odometer;
-    }
     if (time_ecu != time_ecu_last || force_update)
     {
       time_ecu_last = time_ecu;
-    }
-    if (fuel_sensor_resistance != fuel_sensor_resistance_last || force_update)
-    {
-      fuel_sensor_resistance_last = fuel_sensor_resistance;
-    }
-    if (ambient_temp != ambient_temp_last || force_update)
-    {
-      ambient_temp_last = ambient_temp;
     }
     if (elapsed_seconds_since_start != elapsed_seconds_since_start_last || force_update)
     {
@@ -812,15 +876,13 @@ void serial_print_kwp_handshake_error(char response[3])
 void disconnect()
 {
   obd.end();
-  if (debug_mode_enabled)
-  {
-    Serial.print(F("Disconnected. Block counter: "));
-    Serial.print(block_counter);
-    Serial.print(F(". Connected: "));
-    Serial.print(connected);
-    Serial.print(F(". Available: "));
-    Serial.println(obd.available());
-  }
+  Serial.print(F("Disconnected. Block counter: "));
+  Serial.print(block_counter);
+  Serial.print(F(". Connected: "));
+  Serial.print(connected);
+  Serial.print(F(". Available: "));
+  Serial.println(obd.available());
+
   block_counter = 0;
   connected = false;
   connect_time_start = 0;
@@ -864,11 +926,8 @@ String is_connected_as_string()
  */
 void obdWrite(uint8_t data)
 {
-  if (debug_mode_enabled)
-  {
-    Serial.print(F("-MCU: "));
-    Serial.println(data, HEX);
-  }
+  Serial.print(F("-MCU: "));
+  Serial.println(data, HEX);
 
   if (baud_rate >= 10400)
     delay(5);
@@ -897,20 +956,16 @@ uint8_t obdRead()
   {
     if (millis() >= timeout)
     {
-      if (debug_mode_enabled)
-      {
-        Serial.println(F("ERROR: obdRead() timeout while waiting for obd.available() > 0."));
-      }
+      Serial.println(F("ERROR: obdRead() timeout while waiting for obd.available() > 0."));
+
       // errorTimeout++;
       return -1;
     }
   }
   uint8_t data = obd.read();
-  if (debug_mode_enabled)
-  {
-    Serial.print("ECU: ");
-    Serial.println(data, HEX);
-  }
+  Serial.print("ECU: ");
+  Serial.println(data, HEX);
+
   return data;
 }
 
@@ -1385,16 +1440,14 @@ bool readSensors(int group)
     String n;
     float v = 0;
 
-    if (debug_mode_enabled)
-    {
-      Serial.print(F("type="));
-      Serial.print(k);
-      Serial.print(F("  a="));
-      Serial.print(a);
-      Serial.print(F("  b="));
-      Serial.print(b);
-      Serial.print(F("  text="));
-    }
+    Serial.print(F("type="));
+    Serial.print(k);
+    Serial.print(F("  a="));
+    Serial.print(a);
+    Serial.print(F("  b="));
+    Serial.print(b);
+    Serial.print(F("  text="));
+
     String t = "";
     String units = "";
     char buf[32];
@@ -1739,6 +1792,7 @@ bool readSensors(int group)
           break;
         case 1:
           // OK Oil Level (OK/n.OK)
+          oil_level_ok = (int)v;
           break;
         case 2:
           // 11.0°C Oil temp
