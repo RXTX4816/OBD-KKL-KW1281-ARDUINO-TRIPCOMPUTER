@@ -17,13 +17,6 @@ Ignore compile warnings.
 #include "LiquidCrystal.h"
 #include "NewSoftwareSerial.h"
 
-// Begin memory optimizations
-struct Config
-{
-  unsigned int simulation_mode_active : 1; // If simulation mode is active the device will display imaginary values
-  unsigned int debug_mode_enabled : 1;
-};
-
 /* --------------------------EDIT THE FOLLOWING TO YOUR LIKING-------------------------------------- */
 
 /* Config */
@@ -66,6 +59,10 @@ uint8_t menu_cockpit_screen = 0;
 uint8_t menu_cockpit_screen_max = 4;
 uint8_t menu_experimental_screen = 0;
 uint8_t menu_experimental_screen_max = 64;
+uint8_t menu_debug_screen = 0;
+uint8_t menu_debug_screen_max = 4;
+uint8_t menu_dtc_screen = 0;
+uint8_t menu_dtc_screen_max = 9;
 uint8_t menu_settings_screen = 0;
 uint8_t menu_settings_screen_max = 10;
 bool menu_screen_switch = false;
@@ -91,9 +88,24 @@ Just uncomment and add the logic in readSensors(). This can also be done with VC
 uint8_t k_temp[4] = {0, 0, 0, 0};
 float v_temp[4] = {-1, -1, -1, -1};
 String unit_temp[4] = {"ERR", "ERR", "ERR", "ERR"};
+void reset_temp_group_array() {
+  for (uint8_t i = 0; i < 4; i++) {
+    k_temp[i] = 0;
+    v_temp[i] = 0;
+    unit_temp[i] = "ERR";
+  }
+}
 // DTC error
-uint16_t dtc_errors[4] = {0x0000, 0x0000, 0x0000, 0x0000};
-uint8_t dtc_status_bytes[4] = {0x00, 0x00, 0x00, 0x00};
+uint16_t dtc_errors[16] = {0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000};
+bool dtc_errors_updated = false;
+uint8_t dtc_status_bytes[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+bool dtc_status_bytes_updated = false;
+void reset_dtc_status_errors_array() {
+  for (uint8_t i = 0; i < 8; i++) {
+    dtc_errors[i] = 0x0000;
+    dtc_status_bytes[i] = 0x00;
+  }
+}
 
 /* ADDR_INSTRUMENTS measurement group entries, chronologically 0-3 in each group */
 // Group 1
@@ -341,6 +353,22 @@ void init_menu_cockpit()
       lcd_print(15, 0, "V");
       lcd_print(13, 1, "TBa");
       break;
+    case 1:
+      lcd_print(10, 0, "load");
+      lcd_print(13, 1, "TBa");
+      break;
+    case 2:
+      lcd_print(12, 0, "bits");
+      lcd_print(10, 1, "lambda");
+      break;
+    case 3:
+      lcd_print(6, 0, "kmh");
+      lcd_print(8, 1, "mbar");
+      break;
+    case 4:
+      lcd_print(6, 0, "C temp");
+      lcd_print(6, 1, "C temp");
+      break;
     default:
       lcd_print(0, 0, "Screen", 7);
       lcd_print(7, 0, menu_cockpit_screen);
@@ -348,10 +376,6 @@ void init_menu_cockpit()
       break;
     }
     break;
-  /*case ADDR_ABS_BRAKES:
-    break;
-  case ADDR_AUTO_HVAC:
-    break; */
   case ADDR_INSTRUMENTS:
     switch (menu_cockpit_screen)
     {
@@ -388,7 +412,6 @@ void init_menu_cockpit()
       break;
     }
     break;
-  case ADDR_CENTRAL_CONV:
   default:
     // Addr not supported
     lcd_print(0, 0, "Addr", 5);
@@ -412,9 +435,39 @@ void init_menu_debug()
 
 void init_menu_dtc()
 {
-  // Addr not supported
-  lcd_print(0, 0, "DTC menu");
-  lcd_print(0, 1, "not supported!");
+  switch (menu_dtc_screen)
+  {
+  case 0:
+    lcd_print(0, 0, "DTC menu addr ");
+    lcd_print(0, 1, "<");
+    lcd_print(5, 1, "Read");
+    lcd_print(15, 1, ">");
+    break;
+  case 1:
+    lcd_print(0, 0, "DTC menu addr ");
+    lcd_print(0, 1, "<");
+    lcd_print(5, 1, "Clear");
+    lcd_print(15, 1, ">");
+    break;
+  case 2:
+  case 3:
+  case 4:
+  case 5:
+  case 6:
+  case 7:
+  case 8:
+  case 9:
+  // "X/ XXXXXX St:   "
+  // "/X XXXXXX St:   "
+    lcd_print(1, 0, "/");
+    lcd_print(10, 0, "St:");
+    lcd_print(0, 1, "/8");
+    lcd_print(10, 1, "St:");
+    break;
+  default:
+
+    break;
+  }
 }
 void init_menu_settings()
 {
@@ -497,6 +550,32 @@ void display_menu_debug()
 }
 void display_menu_dtc()
 {
+  switch (menu_dtc_screen)
+  {
+  case 0:
+  case 1:
+    break;
+  case 2:
+  case 3:
+  case 4:
+  case 5:
+  case 6:
+  case 7:
+  case 8:
+  case 9:
+    uint8_t dtc_pointer = menu_cockpit_screen - 2;
+    if (dtc_pointer < 0 || dtc_pointer > 7)
+      return;
+    lcd_print(0, 0, dtc_pointer+1);
+    lcd_print_cockpit(3, 0, dtc_errors[dtc_pointer], 6, dtc_errors_updated, true);
+    lcd_print_cockpit(13, 0, dtc_status_bytes[dtc_pointer], 3, dtc_status_bytes_updated, true);
+    lcd_print_cockpit(3, 1, dtc_errors[dtc_pointer+1], 6, dtc_errors_updated, true);
+    lcd_print_cockpit(13, 1, dtc_status_bytes[dtc_pointer+1], 3, dtc_status_bytes_updated, true);
+    break;
+  default:
+
+    break;
+  }
 }
 void display_menu_settings(bool force_update = false)
 {
