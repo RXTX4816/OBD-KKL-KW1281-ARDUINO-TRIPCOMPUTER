@@ -85,11 +85,24 @@ bool com_error = false;
 
 /* Temporary Measurements for if you want to find out which values show up in your groups in a desired ECU address.
 Just uncomment and add the logic in readSensors(). This can also be done with VCDS or other tools.*/
+bool group_side = false; // 0 = display k0 and k1. 1= display k2 and k3
+bool group_side_updated = false;
+void invert_group_side()
+{
+  group_side = !group_side;
+  group_side_updated = true;
+  menu_switch = true;
+}
 uint8_t k_temp[4] = {0, 0, 0, 0};
+bool k_temp_updated = false;
 float v_temp[4] = {-1, -1, -1, -1};
+bool v_temp_updated = false;
 String unit_temp[4] = {"ERR", "ERR", "ERR", "ERR"};
-void reset_temp_group_array() {
-  for (uint8_t i = 0; i < 4; i++) {
+bool unit_temp_updated = false;
+void reset_temp_group_array()
+{
+  for (uint8_t i = 0; i < 4; i++)
+  {
     k_temp[i] = 0;
     v_temp[i] = 0;
     unit_temp[i] = "ERR";
@@ -98,10 +111,12 @@ void reset_temp_group_array() {
 // DTC error
 uint16_t dtc_errors[16] = {0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000};
 bool dtc_errors_updated = false;
-uint8_t dtc_status_bytes[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+uint8_t dtc_status_bytes[16] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 bool dtc_status_bytes_updated = false;
-void reset_dtc_status_errors_array() {
-  for (uint8_t i = 0; i < 8; i++) {
+void reset_dtc_status_errors_array()
+{
+  for (uint8_t i = 0; i < 8; i++)
+  {
     dtc_errors[i] = 0x0000;
     dtc_status_bytes[i] = 0x00;
   }
@@ -137,8 +152,10 @@ uint8_t oil_temp = 0;
 bool oil_temp_updated = false;
 // ADDR_ENGINE measurement group entries TODO
 // Group 1 (0th is engine rpm)
-uint8_t temperature_unknown_1 = 0;            // 1
-int8_t lambda = 0;                            // 2
+uint8_t temperature_unknown_1 = 0; // 1
+bool temperature_unknown_1_updated = false;
+int8_t lambda = 0; // 2
+bool lambda_updated = false;
 bool exhaust_gas_recirculation_error = false; // 3, 8 bit encoding originally
 bool oxygen_sensor_heating_error = false;
 bool oxgen_sensor_error = false;
@@ -147,17 +164,27 @@ bool secondary_air_injection_error = false;
 bool evaporative_emissions_error = false;
 bool catalyst_heating_error = false;
 bool catalytic_converter = false;
+bool error_bits_updated = false;
+String bits_as_string = "        ";
 // Group 3 (Only 1-3 no 0th)
 uint16_t pressure = 0; // mbar
+bool pressure_updated = false;
 float tb_angle = 0;
+bool tb_angle_updated = false;
 float steering_angle = 0;
+bool steering_angle_updated = false;
 // Group 4 (Only 1-3 no 0th)
 float voltage = 0;
+bool voltage_updated = false;
 uint8_t temperature_unknown_2 = 0;
+bool temperature_unknown_2_updated = false;
 uint8_t temperature_unknown_3 = 0;
+bool temperature_unknown_3_updated = false;
 // Group 6 (Only 1 and 3)
 uint16_t engine_load = 0; // 1
-int8_t lambda_2 = 0;      // 3
+bool engine_load_updated = false;
+int8_t lambda_2 = 0; // 3
+bool lambda_2_updated = false;
 
 /* Computed Stats */
 uint32_t elapsed_seconds_since_start = 0;
@@ -170,6 +197,21 @@ float fuel_per_100km = 0;
 bool fuel_per_100km_updated = false;
 float fuel_per_hour = 0;
 bool fuel_per_hour_updated = false;
+
+void reset_variables()
+{
+  block_counter = 0;
+  connected = false;
+  connect_time_start = 0;
+  odometer_start = 0;
+  fuel_level_start = 0;
+  menu = 0;
+  menu_switch = false;
+  button_read_time = 0;
+  addr_selected = 0x00;
+  screen_current = 0;
+  menu_current = 0;
+}
 
 /* Display */
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7); // 16x2 display
@@ -234,6 +276,32 @@ void increase_block_counter()
   {
     block_counter++;
   }
+}
+
+void increment_group_current()
+{
+  if (group_current > menu_experimental_screen_max)
+  {
+    group_current = 0;
+  }
+  else
+  {
+    group_current++;
+  }
+  group_current_updated = true;
+}
+
+void decrement_group_current()
+{
+  if (group_current == 0)
+  {
+    group_current = menu_experimental_screen_max;
+  }
+  else
+  {
+    group_current--;
+  }
+  group_current_updated = true;
 }
 
 // Display functions
@@ -315,12 +383,34 @@ void lcd_print(uint8_t x, uint8_t y, bool boolean, uint8_t width = 0)
   lcd_print(x, y, convert_bool_string(boolean), width);
 }
 
+void lcd_print_cockpit(uint8_t x, uint8_t y, String s, uint8_t width, bool &updated, bool force_update = false)
+{
+  lcd_clear(x, y, width);
+  if (updated || force_update)
+  {
+    lcd_print(x, y, s, width);
+    updated = false;
+  }
+}
 void lcd_print_cockpit(uint8_t x, uint8_t y, uint16_t number, uint8_t width, bool &updated, bool force_update = false)
 {
   lcd_clear(x, y, width);
   if (updated || force_update)
   {
     uint8_t number_length = count_digit(number);
+    if (number_length <= width)
+    {
+      lcd_print(x, y, number);
+    }
+    updated = false;
+  }
+}
+void lcd_print_cockpit_float(uint8_t x, uint8_t y, float number, uint8_t width, bool &updated, bool force_update = false)
+{
+  lcd_clear(x, y, width);
+  if (updated || force_update)
+  {
+    uint8_t number_length = String(number, 2).length();
     if (number_length <= width)
     {
       lcd_print(x, y, number);
@@ -355,7 +445,7 @@ void init_menu_cockpit()
       break;
     case 1:
       lcd_print(10, 0, "load");
-      lcd_print(13, 1, "TBa");
+      lcd_print(13, 1, "STa");
       break;
     case 2:
       lcd_print(12, 0, "bits");
@@ -423,11 +513,11 @@ void init_menu_cockpit()
 void init_menu_experimental()
 {
   lcd_print(0, 0, "G:");
-  lcd_print(6, 0, "Group menu");
-  lcd_print(0, 1, "not supported!");
+  lcd_print(0, 1, "S:");
 }
 void init_menu_debug()
 {
+
   // Addr not supported
   lcd_print(0, 0, "Debug menu");
   lcd_print(0, 1, "not supported!");
@@ -457,8 +547,8 @@ void init_menu_dtc()
   case 7:
   case 8:
   case 9:
-  // "X/ XXXXXX St:   "
-  // "/X XXXXXX St:   "
+    // "X/ XXXXXX St:   "
+    // "/X XXXXXX St:   "
     lcd_print(1, 0, "/");
     lcd_print(10, 0, "St:");
     lcd_print(0, 1, "/8");
@@ -497,6 +587,46 @@ void display_menu_cockpit(bool force_update = false)
   case ADDR_ENGINE:
     lcd_print(0, 0, voltage);
     lcd_print(0, 1, tb_angle);
+    switch (menu_cockpit_screen)
+    {
+    case 0:
+      lcd_print_cockpit_float(0, 0, voltage, 7, voltage_updated, force_update);
+      lcd_print_cockpit_float(0, 1, tb_angle, 7, tb_angle_updated, force_update);
+      break;
+    case 1:
+      lcd_print_cockpit(0, 0, engine_load, 7, engine_load_updated, force_update);
+      lcd_print_cockpit_float(0, 1, steering_angle, 7, steering_angle_updated, force_update);
+      break;
+    case 2:
+      if (error_bits_updated || force_update)
+      {
+        bits_as_string[0] = convert_bool_char(exhaust_gas_recirculation_error);
+        bits_as_string[1] = convert_bool_char(oxygen_sensor_heating_error);
+        bits_as_string[2] = convert_bool_char(oxgen_sensor_error);
+        bits_as_string[3] = convert_bool_char(air_conditioning_error);
+        bits_as_string[4] = convert_bool_char(secondary_air_injection_error);
+        bits_as_string[5] = convert_bool_char(evaporative_emissions_error);
+        bits_as_string[6] = convert_bool_char(catalyst_heating_error);
+        bits_as_string[7] = convert_bool_char(catalytic_converter);
+      }
+
+      lcd_print_cockpit(0, 0, bits_as_string, 7, error_bits_updated, force_update);
+      lcd_print_cockpit(0, 1, lambda_2, 7, lambda_2_updated, force_update);
+      break;
+    case 3:
+      lcd_print_cockpit(0, 0, vehicle_speed, 7, vehicle_speed_updated, force_update);
+      lcd_print_cockpit(0, 1, pressure, 7, pressure_updated, force_update);
+      break;
+    case 4:
+      lcd_print_cockpit(0, 0, temperature_unknown_2, 4, temperature_unknown_2_updated, force_update);
+      lcd_print_cockpit(0, 1, temperature_unknown_3, 4, temperature_unknown_3_updated, force_update);
+      break;
+    default:
+      lcd_print(0, 0, "Screen", 7);
+      lcd_print(7, 0, menu_cockpit_screen);
+      lcd_print(0, 1, "not supported!");
+      break;
+    }
     break;
   /*case ADDR_ABS_BRAKES:
     break;
@@ -541,14 +671,31 @@ void display_menu_cockpit(bool force_update = false)
     break;
   }
 }
-void display_menu_experimental()
+void display_menu_experimental(bool force_update = false)
 {
-  lcd_print_cockpit(3, 0, group_current, 2, group_current_updated);
+  lcd_print_cockpit(2, 0, group_current, 2, group_current_updated, force_update);
+  lcd_print_cockpit(2, 1, (uint8_t)group_side, 2, group_side_updated, force_update);
+  if (!group_side)
+  {
+    // Side 0
+    lcd_print_cockpit_float(5, 0, v_temp[0], 5, k_temp_updated, force_update);
+    lcd_print_cockpit_float(5, 1, v_temp[1], 5, k_temp_updated, force_update);
+    lcd_print_cockpit(11, 0, unit_temp[0], 5, unit_temp_updated, force_update);
+    lcd_print_cockpit(11, 1, unit_temp[1], 5, unit_temp_updated, force_update);
+  }
+  else
+  {
+    // Side 1
+    lcd_print_cockpit_float(5, 0, v_temp[2], 5, k_temp_updated, force_update);
+    lcd_print_cockpit_float(5, 1, v_temp[3], 5, k_temp_updated, force_update);
+    lcd_print_cockpit(11, 0, unit_temp[2], 5, unit_temp_updated, force_update);
+    lcd_print_cockpit(11, 1, unit_temp[3], 5, unit_temp_updated, force_update);
+  }
 }
 void display_menu_debug()
 {
 }
-void display_menu_dtc()
+void display_menu_dtc(bool force_update = false)
 {
   switch (menu_dtc_screen)
   {
@@ -566,11 +713,11 @@ void display_menu_dtc()
     uint8_t dtc_pointer = menu_cockpit_screen - 2;
     if (dtc_pointer < 0 || dtc_pointer > 7)
       return;
-    lcd_print(0, 0, dtc_pointer+1);
-    lcd_print_cockpit(3, 0, dtc_errors[dtc_pointer], 6, dtc_errors_updated, true);
-    lcd_print_cockpit(13, 0, dtc_status_bytes[dtc_pointer], 3, dtc_status_bytes_updated, true);
-    lcd_print_cockpit(3, 1, dtc_errors[dtc_pointer+1], 6, dtc_errors_updated, true);
-    lcd_print_cockpit(13, 1, dtc_status_bytes[dtc_pointer+1], 3, dtc_status_bytes_updated, true);
+    lcd_print(0, 0, dtc_pointer + 1);
+    lcd_print_cockpit(3, 0, dtc_errors[dtc_pointer], 6, dtc_errors_updated, force_update);
+    lcd_print_cockpit(13, 0, dtc_status_bytes[dtc_pointer], 3, dtc_status_bytes_updated, force_update);
+    lcd_print_cockpit(3, 1, dtc_errors[dtc_pointer + 1], 6, dtc_errors_updated, force_update);
+    lcd_print_cockpit(13, 1, dtc_status_bytes[dtc_pointer + 1], 3, dtc_status_bytes_updated, force_update);
     break;
   default:
 
@@ -727,31 +874,26 @@ void serial_print_kwp_handshake_error(char response[3])
   Serial.println(F("]"));
 }
 
-// --------------------------------------------------------------------------------------------------
-//                            OBD CODE
-// --------------------------------------------------------------------------------------------------
-
-void disconnect()
+void serial_print_disconnected()
 {
-  obd.end();
   Serial.print(F("Disconnected. Block counter: "));
   Serial.print(block_counter);
   Serial.print(F(". Connected: "));
   Serial.print(connected);
   Serial.print(F(". Available: "));
   Serial.println(obd.available());
+}
 
-  block_counter = 0;
-  connected = false;
-  connect_time_start = 0;
-  odometer_start = 0;
-  fuel_level_start = 0;
-  menu = 0;
-  menu_switch = false;
-  button_read_time = 0;
-  addr_selected = 0x00;
-  screen_current = 0;
-  menu_current = 0;
+// --------------------------------------------------------------------------------------------------
+//                            OBD CODE
+// --------------------------------------------------------------------------------------------------
+
+void disconnect()
+{
+  serial_print_disconnected();
+
+  obd.end();
+  reset_variables();
   delay(2222);
   //  TODO communication end procedure
 }
@@ -762,18 +904,6 @@ void disconnect()
 int available()
 {
   return obd.available();
-}
-
-/**
- * @brief Checks if the connection with the ECU is active. Function below converts 1 and 0 to "Y" and "N"
- */
-bool is_connected()
-{
-  return connected;
-}
-String is_connected_as_string()
-{
-  return convert_bool_string(is_connected());
 }
 
 /**
@@ -813,9 +943,7 @@ uint8_t obdRead()
   {
     if (millis() >= timeout)
     {
-      Serial.println(F("ERROR: obdRead() timeout while waiting for obd.available() > 0."));
-
-      // errorTimeout++;
+      Serial.println(F("ERROR: obdRead() timeout obd.available() = 0."));
       return -1;
     }
   }
@@ -964,7 +1092,33 @@ bool KWPSendAckBlock()
   Serial.println(block_counter);
   char buf[32];
   sprintf(buf, "\x03%c\x09\x03", block_counter);
-  return (KWPSendBlock(buf, 4));
+  if (!KWPSendBlock(buf, 4))
+    return false;
+  return true;
+}
+
+bool KWPSendDTCReadBlock()
+{
+  Serial.print(F("---KWPSendDTCReadBlock block counter = "));
+  Serial.println(block_counter);
+
+  char s[32];
+  sprintf(s, "\x03%c\x07\x03", block_counter);
+  if (!KWPSendBlock(s, 4))
+    return false;
+  return true;
+}
+
+bool KWPSendDTCDeleteBlock()
+{
+  Serial.print(F("---KWPSendDTCDeleteBlock block counter = "));
+  Serial.println(block_counter);
+
+  char s[32];
+  sprintf(s, "\x03%c\x05\x03", block_counter);
+  if (!KWPSendBlock(s, 4))
+    return false;
+  return true;
 }
 
 // count: if zero given, first received byte contains block length
@@ -1021,7 +1175,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
       data = obdRead();
       if (data == -1)
       {
-        Serial.println(F(" - KWPReceiveBlock error: Nothing to listen to (Available=0) or empty buffer!"));
+        Serial.println(F(" - KWPReceiveBlock error: (Available=0) or empty buffer!"));
         lcd_print(0, 1, "ERROR data = -1 ");
         delay(1700);
         return false;
@@ -1033,7 +1187,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         if (source == 1 && (data != 15 || data != 3) && obd.available())
         {
           lcd_print(0, 1, "WARN block length");
-          Serial.println(F(" - KWPReceiveBlock warn: Communication error occured, check block length! com_error set true."));
+          Serial.println(F(" - KWPReceiveBlock warn: Communication error occured, check block length!"));
           com_error = true;
           size = 6;
         }
@@ -1179,6 +1333,35 @@ bool KWPErrorBlock()
   return true;
 }
 
+bool KWPReceiveAckBlock()
+{
+  // --------- Expect response acknowledge ----------------
+  char buf[32];
+  int size2 = 0;
+  if (!KWPReceiveBlock(buf, 4, size2))
+  {
+    return false;
+  }
+  if (buf[0] != 0x03 || buf[2] != 0x09 || buf[3] != 0x03)
+  {
+    Serial.print(F(" - Error receiving ACK procedure got s[0]-s[3]: "));
+    Serial.print(buf[0], HEX);
+    Serial.print(F(" "));
+    Serial.print(buf[1], HEX);
+    Serial.print(F(" "));
+    Serial.print(buf[2], HEX);
+    Serial.print(F(" "));
+    Serial.print(buf[3], HEX);
+    Serial.println(F(" should be 03 BC 09 03"));
+    return false;
+  }
+  if (com_error)
+  {
+    KWPErrorBlock();
+    return false;
+  }
+}
+
 /**
  * @brief Last step in initial ECU startup sequence.
  *
@@ -1206,7 +1389,6 @@ bool readConnectBlocks(bool initialization_phase = false)
 
       lcd_print(0, 1, "ERR: s[2]!=xF6");
       delay(2000);
-      // errorData++;
       return false;
     }
     String text = String(s);
@@ -1565,9 +1747,21 @@ bool readSensors(int group)
     /*
      * Update k_temp and v_temp and unit_temp
      */
-    k_temp[idx] = k;
-    v_temp[idx] = v;
-    unit_temp[idx] = units;
+    if (k_temp[idx] != k)
+    {
+      k_temp[idx] = k;
+      k_temp_updated = true;
+    }
+    if (v_temp[idx] != v)
+    {
+      v_temp[idx] = v;
+      v_temp_updated = true;
+    }
+    if (unit_temp[idx] != units)
+    {
+      unit_temp[idx] = units;
+      unit_temp_updated = true;
+    }
 
     /*
      *  Add here the values from your label file for each address.
@@ -1601,11 +1795,16 @@ bool readSensors(int group)
           if (oil_pressure_min != (uint16_t)v)
           {
             oil_pressure_min = (uint16_t)v;
+            oil_pressure_min_updated = true;
           }
           break;
         case 3:
           // 21:50 Time
-          time_ecu = (int)v;
+          if (time_ecu != (uint32_t)v)
+          {
+            time_ecu = (uint32_t)v;
+            time_ecu_updated = true;
+          }
           break;
         }
         break;
@@ -1614,27 +1813,43 @@ bool readSensors(int group)
         {
         case 0:
           // 101010 Odometer
-          odometer = (int)v;
-          if (millis() - connect_time_start < 3500)
+          if (odometer != (uint32_t)v)
+          {
+            odometer = (uint32_t)v;
+            odometer_updated = true;
+          }
+          if (millis() - connect_time_start < 10000)
           {
             odometer_start = odometer;
           }
           break;
         case 1:
           // 9 l Fuel level
-          fuel_level = (int)v;
-          if (millis() - connect_time_start < 3500)
+          if (fuel_level != (uint16_t)v)
+          {
+            fuel_level = (uint16_t)v;
+            fuel_level_updated = true;
+          }
+          if (millis() - connect_time_start < 10000)
           {
             fuel_level_start = fuel_level;
           }
           break;
         case 2:
           // 93 ohms Fuel Sender Resistance
-          fuel_sensor_resistance = (int)v;
+          if (fuel_sensor_resistance != (uint16_t)v)
+          {
+            fuel_sensor_resistance = (uint16_t)v;
+            fuel_sensor_resistance_updated = true;
+          }
           break;
         case 3:
           // 0°C Ambient Temperature
-          ambient_temp = (int)v;
+          if (ambient_temp != (uint8_t)v)
+          {
+            ambient_temp = (uint8_t)v;
+            ambient_temp_updated = true;
+          }
           break;
         }
         break;
@@ -1643,15 +1858,27 @@ bool readSensors(int group)
         {
         case 0:
           // 12.0°C Coolant temp.
-          coolant_temp = (int)v;
+          if (coolant_temp != (uint8_t)v)
+          {
+            coolant_temp = (uint8_t)v;
+            coolant_temp_updated = true;
+          }
           break;
         case 1:
           // OK Oil Level (OK/n.OK)
-          oil_level_ok = (int)v;
+          if (oil_level_ok != (uint8_t)v)
+          {
+            oil_level_ok = (uint8_t)v;
+            oil_level_ok_updated = true;
+          }
           break;
         case 2:
           // 11.0°C Oil temp
-          oil_temp = (int)v;
+          if (oil_temp != (uint8_t)v)
+          {
+            oil_temp = (uint8_t)v;
+            oil_temp_updated = true;
+          }
           break;
         case 3:
           // N/A
@@ -1668,15 +1895,28 @@ bool readSensors(int group)
         {
         case 0:
           // /min RPM
-          engine_rpm = (int)v;
+          if (engine_rpm != (uint16_t)v)
+          {
+            engine_rpm = (uint16_t)v;
+            engine_rpm_updated = true;
+          }
           break;
         case 1:
           // 0 /min Engine Speed
-          temperature_unknown_1 = (int)v;
+          if (temperature_unknown_1 != (uint8_t)v)
+          {
+            temperature_unknown_1 = (uint8_t)v;
+            temperature_unknown_1_updated = true;
+          }
           break;
         case 2:
           // Oil Pr. 2 < min (Oil pressure 0.9 bar)
-          lambda = v;
+
+          if (lambda != (int8_t)v)
+          {
+            lambda = (int8_t)v;
+            lambda_updated = true;
+          }
           break;
         case 3:
           // 21:50 Time
@@ -1724,15 +1964,28 @@ bool readSensors(int group)
           break;
         case 1:
           // 9.0 l Fuel level
-          pressure = (int)v;
+
+          if (pressure != (uint16_t)v)
+          {
+            pressure = (uint16_t)v;
+            pressure_updated = true;
+          }
           break;
         case 2:
           // 93 ohms Fuel Sender Resistance
-          tb_angle = v;
+          if (tb_angle != (float)v)
+          {
+            tb_angle = (float)v;
+            tb_angle_updated = true;
+          }
           break;
         case 3:
           // 0.0°C Ambient Temperature
-          steering_angle = v;
+          if (steering_angle != (float)v)
+          {
+            steering_angle = (float)v;
+            steering_angle_updated = true;
+          }
           break;
         }
         break;
@@ -1742,13 +1995,25 @@ bool readSensors(int group)
         case 0:
           break;
         case 1:
-          voltage = v;
+          if (voltage != (float)v)
+          {
+            voltage = (float)v;
+            voltage_updated = true;
+          }
           break;
         case 2:
-          temperature_unknown_2 = (int)v;
+          if (temperature_unknown_2 != (uint8_t)v)
+          {
+            temperature_unknown_2 = (uint8_t)v;
+            temperature_unknown_2_updated = true;
+          }
           break;
         case 3:
-          temperature_unknown_3 = (int)v;
+          if (temperature_unknown_3 != (uint8_t)v)
+          {
+            temperature_unknown_3 = (uint8_t)v;
+            temperature_unknown_3_updated = true;
+          }
           break;
         }
         break;
@@ -1758,12 +2023,20 @@ bool readSensors(int group)
         case 0:
           break;
         case 1:
-          engine_load = (uint16_t)v;
+          if (engine_load != (uint16_t)v)
+          {
+            engine_load = (uint16_t)v;
+            engine_load_updated = true;
+          }
           break;
         case 2:
           break;
         case 3:
-          lambda_2 = (int8_t)v;
+          if (lambda_2 != (int8_t)v)
+          {
+            lambda_2 = (int8_t)v;
+            lambda_2_updated = true;
+          }
           break;
         }
         break;
@@ -1790,150 +2063,118 @@ bool readSensors(int group)
  */
 bool send_ack(bool expect_response_ack = true)
 {
-  char s[64];
-  sprintf(s, "\x03%c\x09\x03", block_counter);
-  if (!KWPSendBlock(s, 4))
-  {
+  if (!KWPSendAckBlock())
     return false;
-  }
-  if (expect_response_ack)
-  {
-    int size2 = 0;
-    if (!KWPReceiveBlock(s, 4, size2))
-    {
-      return false;
-    }
-    if (s[0] != 0x03 || s[2] != 0x09 || s[3] != 0x03)
-    {
-      Serial.print(F(" - Error receiving ACK procedure got s[0]-s[3]: "));
-      Serial.print(s[0], HEX);
-      Serial.print(F(" "));
-      Serial.print(s[1], HEX);
-      Serial.print(F(" "));
-      Serial.print(s[2], HEX);
-      Serial.print(F(" "));
-      Serial.print(s[3], HEX);
-      Serial.println(F(" should be 03 BC 09 03"));
-    }
-    if (com_error)
-    {
-      KWPErrorBlock();
-      return false;
-    }
-  }
+
+  if (!expect_response_ack)
+    return true;
+
+  if (!KWPReceiveAckBlock())
+    return false;
+
   return true;
 }
 
 /**
  * KW1281 procedure to read DTC error codes
+ *
+ * @return 0=false, 1=true, 2=true_no_errors_found
  */
-bool read_DTC_codes()
+uint8_t read_DTC_codes()
 {
   Serial.print(F(" - Read DTC error codes on ADDR 0x"));
   Serial.println(addr_selected, HEX);
+
+  if (!KWPSendDTCReadBlock())
+    return false;
+
+  reset_dtc_status_errors_array();
+  bool all_dtc_errors_received = false;
+  uint8_t dtc_errors_received_counter = 0;
   char s[64];
-  sprintf(s, "\x03%c\x07\x03", block_counter);
-  if (!KWPSendBlock(s, 4))
-    return false;
   int size = 0;
-  if (!KWPReceiveBlock(s, 64, size, 1))
+  while (!all_dtc_errors_received)
   {
-    return false;
-  }
-  if (com_error)
-  {
-    // Kommunikationsfehler
-    KWPErrorBlock();
-    return false;
-  }
-
-  uint8_t block_length = s[0];
-  uint8_t dtc_error_amount = (uint8_t)((block_length - 3) / 3);
-  if (dtc_error_amount < 1 || dtc_error_amount > 4)
-  {
-    Serial.println(F(" - Read DTC error codes wrong amount of DTC errors calculated!"));
-  }
-  if (s[2] != 0xFC)
-  {
-    Serial.println(F(" - Read DTC error codes wrong block title!"));
-  }
-
-  for (int j = 0; j < 4; j++)
-  {
-    dtc_errors[j] = 0x0000;
-    dtc_status_bytes[j] = 0x00;
-  }
-
-  for (int i = 0; i < dtc_error_amount; i++)
-  {
-    uint8_t byte_high = s[3 + 3 * i];
-    uint8_t byte_low = s[3 + 3 * i + 1];
-    uint8_t byte_status = s[3 + 3 * i + 2];
-    dtc_errors[i] = byte_low | (byte_high << 8);
-    dtc_status_bytes[i] = byte_status;
-  }
-
-  Serial.print(F("DTC errors: "));
-  for (int i = 0; i < dtc_error_amount; i++)
-  {
-    Serial.print(i);
-    Serial.print(F(" = "));
-    Serial.print(dtc_errors[i], HEX);
-    Serial.print(F(" | "));
-  }
-  Serial.println("");
-  Serial.print(F("DTC Status bytes: "));
-  for (int i = 0; i < dtc_error_amount; i++)
-  {
-    Serial.print(i);
-    Serial.print(F(" = "));
-    Serial.print(dtc_status_bytes[i], HEX);
-    Serial.print(F(" | "));
-  }
-  Serial.println("");
-
-  send_ack(false);
-
-  size = 0;
-  if (!KWPReceiveBlock(s, 64, size, 1))
-  {
-    return false;
-  }
-  if (com_error)
-  {
-    // Kommunikationsfehler
-    KWPErrorBlock();
-    return false;
-  }
-  if (s[2] == 0xFC)
-  {
-    // TODO
-  }
-  else if (s[2] == 0x09)
-  {
-    int size2 = 0;
-    if (!KWPReceiveBlock(s, 4, size2))
+    if (!KWPReceiveBlock(s, 64, size, 1))
     {
       return false;
-    }
-    if (s[0] != 0x03 || s[2] != 0x09 || s[3] != 0x03)
-    {
-      Serial.print(F(" - Error receiving ACK procedure got s[0]-s[3]: "));
-      Serial.print(s[0], HEX);
-      Serial.print(F(" "));
-      Serial.print(s[1], HEX);
-      Serial.print(F(" "));
-      Serial.print(s[2], HEX);
-      Serial.print(F(" "));
-      Serial.print(s[3], HEX);
-      Serial.println(F(" should be 03 BC 09 03"));
     }
     if (com_error)
     {
+      // Kommunikationsfehler
       KWPErrorBlock();
       return false;
     }
+
+    if (s[2] == 0xFC)
+    {
+      // Read next DTC error block
+      if (s[3] == 0xFF && s[4] == 0xFF && s[5] == 0x88)
+      {
+        // No DTC errors found
+        Serial.println(F(" - No DTC error codes found"));
+        return 2;
+      }
+      else
+      {
+        // Extract DTC errors
+        uint8_t block_length = s[0];
+        uint8_t dtc_error_amount = (uint8_t)((block_length - 3) / 3);
+        if (dtc_error_amount < 1 || dtc_error_amount > 4)
+        {
+          Serial.println(F(" - Read DTC error codes wrong amount of DTC errors calculated!"));
+          return false;
+        }
+        for (int i = 0; i < dtc_error_amount; i++)
+        {
+          uint8_t byte_high = s[3 + 3 * i];
+          uint8_t byte_low = s[3 + 3 * i + 1];
+          uint8_t byte_status = s[3 + 3 * i + 2];
+          dtc_errors[i + dtc_errors_received_counter * 4] = byte_low | (byte_high << 8);
+          dtc_status_bytes[i + dtc_errors_received_counter * 4] = byte_status;
+        }
+        Serial.print(F("DTC errors: "));
+        for (int i = 0; i < dtc_error_amount; i++)
+        {
+          Serial.print(i);
+          Serial.print(F(" = "));
+          Serial.print(dtc_errors[i], HEX);
+          Serial.print(F(" | "));
+        }
+        Serial.println("");
+        Serial.print(F("DTC Status bytes: "));
+        for (int i = 0; i < dtc_error_amount; i++)
+        {
+          Serial.print(i);
+          Serial.print(F(" = "));
+          Serial.print(dtc_status_bytes[i], HEX);
+          Serial.print(F(" | "));
+        }
+        Serial.println("");
+        dtc_errors_received_counter++;
+        if (dtc_errors_received_counter > 3)
+        {
+          Serial.println(F(" - Too much errors to receive. INCREASE ARRAY SIZE!"));
+          all_dtc_errors_received = true;
+          continue;
+        }
+      }
+    }
+    else if (s[2] == 0x09)
+    {
+      // No more DTC error blocks
+      all_dtc_errors_received = true;
+      continue;
+    }
+    else
+    {
+      Serial.println(F(" - Read DTC error codes wrong block title!"));
+    }
   }
+
+  if (!KWPSendAckBlock())
+    return false;
+
   return true;
 }
 
@@ -1942,6 +2183,9 @@ bool read_DTC_codes()
  */
 bool delete_DTC_codes()
 {
+  if (!KWPSendDTCDeleteBlock())
+    return false;
+
   return true;
 }
 
@@ -2417,17 +2661,88 @@ void loop()
           // Up button
           button_pressed = true;
           increment_menu(menu_experimental_screen, menu_experimental_screen_max);
+          increment_group_current();
         }
         else if (user_input >= 200 && user_input < 400)
         {
           // Down button
           button_pressed = true;
           decrement_menu(menu_experimental_screen, menu_experimental_screen_max);
+          decrement_group_current();
+        }
+        else if (user_input >= 600 && user_input < 800)
+        {
+          // Select button
+          button_pressed = true;
+          invert_group_side();
         }
         break;
       case 2:
+        if (user_input >= 60 && user_input < 200)
+        {
+          // Up button
+          button_pressed = true;
+          increment_menu(menu_debug_screen, menu_debug_screen_max);
+        }
+        else if (user_input >= 200 && user_input < 400)
+        {
+          // Down button
+          button_pressed = true;
+          decrement_menu(menu_debug_screen, menu_debug_screen_max);
+        }
         break;
       case 3:
+        if (user_input >= 60 && user_input < 200)
+        {
+          // Up button
+          button_pressed = true;
+          increment_menu(menu_dtc_screen, menu_dtc_screen_max);
+        }
+        else if (user_input >= 200 && user_input < 400)
+        {
+          // Down button
+          button_pressed = true;
+          decrement_menu(menu_dtc_screen, menu_dtc_screen_max);
+        }
+        else
+        {
+          switch (menu_dtc_screen)
+          {
+          case 0:
+            if (user_input >= 600 && user_input < 800)
+            {
+              // Select button = Exit/Reconnect
+              delay(5);
+              if (!read_DTC_codes())
+              {
+                lcd.clear();
+                lcd_print(0, 0, "DTC read error");
+                lcd_print(0, 1, "Disconnecting...");
+                disconnect();
+                return;
+              }
+            }
+            break;
+          case 1:
+            if (user_input >= 600 && user_input < 800)
+            {
+              // Select button = Exit/Reconnect
+              delay(5);
+              if (!delete_DTC_codes())
+              {
+                lcd.clear();
+                lcd_print(0, 0, "DTC delete error");
+                lcd_print(0, 1, "Disconnecting...");
+                disconnect();
+                return;
+              }
+            }
+            break;
+          default:
+
+            break;
+          }
+        }
         break;
       case 4:
         if (user_input >= 60 && user_input < 200)
@@ -2500,12 +2815,14 @@ void loop()
       break;
     case 1:
       init_menu_experimental();
+      display_menu_experimental(true);
       break;
     case 2:
       init_menu_debug();
       break;
     case 3:
       init_menu_dtc();
+      display_menu_dtc(true);
       break;
     case 4:
       init_menu_settings();
@@ -2529,7 +2846,7 @@ void loop()
     display_menu_debug();
     break;
   case 3:
-    display_menu_dtc();
+    display_menu_dtc(true); // Fix later
     break;
   case 4:
     display_menu_settings();
