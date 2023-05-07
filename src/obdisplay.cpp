@@ -1141,6 +1141,8 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         delay(1700);
         return false;
       }
+
+      s[recvcount] = data;
       recvcount++;
 
       if (initialization_phase && recvcount > maxsize)
@@ -1250,9 +1252,6 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         delay(33);
         continue;
       }
-
-      s[recvcount] = data;
-      recvcount++;
       if ((size == 0) && (recvcount == 1))
       {
         if (source == 1 && (data != 15 || data != 3) && obd.available())
