@@ -17,15 +17,21 @@ Ignore compile warnings.
 #include "LiquidCrystal.h"
 #include "NewSoftwareSerial.h"
 
+// Begin memory optimizations
+struct Config
+{
+  unsigned int simulation_mode_active : 1; // If simulation mode is active the device will display imaginary values
+  unsigned int debug_mode_enabled : 1;
+};
+
 /* --------------------------EDIT THE FOLLOWING TO YOUR LIKING-------------------------------------- */
 
 /* Config */
-bool no_input_mode = false; // If you have no buttons connected, mainly used for fast testing
-bool auto_setup = false;
-bool simulation_mode_active = false; // If simulation mode is active the device will display imaginary values
+// bool no_input_mode = false; // If you have no buttons connected, mainly used for fast testing
+// bool auto_setup = false;
+// bool compute_stats = false; // Whether statistic values should be computed (Fuel/100km etc.) Remember division is expensive on these processors.
+bool simulation_mode_active = false;
 bool debug_mode_enabled = false;
-bool compute_stats = false; // Whether statistic values should be computed (Fuel/100km etc.) Remember division is expensive on these processors.
-uint8_t ecu_addr = 17;
 
 /* ECU Addresses. See info.txt in root directory for details on the values of each group. */
 const uint8_t ADDR_ENGINE = 0x01;
@@ -67,7 +73,6 @@ bool menu_screen_switch = false;
 uint32_t endTime = 0;
 uint8_t menu_max = 4;
 uint8_t menu = 0;
-uint8_t menu_last = menu;
 bool menu_switch = false;
 uint16_t connection_attempts_counter = 0;
 uint64_t button_read_time = 0;
@@ -77,6 +82,7 @@ bool connected = false;
 uint16_t baud_rate = 0; // 1200, 2400, 4800, 9600, 10400
 uint8_t block_counter = 0;
 uint8_t group_current = 1;
+bool group_current_updated = false;
 uint8_t addr_selected = 0x00; // Selected ECU address to connect to, see ECU Addresses constants
 bool com_error = false;
 
@@ -92,31 +98,31 @@ uint8_t dtc_status_bytes[4] = {0x00, 0x00, 0x00, 0x00};
 /* ADDR_INSTRUMENTS measurement group entries, chronologically 0-3 in each group */
 // Group 1
 uint16_t vehicle_speed = 0;
-uint16_t vehicle_speed_last = vehicle_speed;
+bool vehicle_speed_updated = false;
 uint16_t engine_rpm = 0;
-uint16_t engine_rpm_last = engine_rpm; // Also in ADDR_Engine Group 1 0th
+bool engine_rpm_updated = false;
 uint16_t oil_pressure_min = 0;
-uint16_t oil_pressure_min_last = oil_pressure_min;
+bool oil_pressure_min_updated = false;
 uint32_t time_ecu = 0;
-uint32_t time_ecu_last = time_ecu;
+bool time_ecu_updated = false;
 // Group 2
 uint32_t odometer = 0;
-uint32_t odometer_last = odometer;
+bool odometer_updated = false;
 uint32_t odometer_start = odometer;
 uint8_t fuel_level = 0;
-uint8_t fuel_level_last = fuel_level;
+bool fuel_level_updated = false;
 uint8_t fuel_level_start = fuel_level;
 uint16_t fuel_sensor_resistance = 0;
-uint16_t fuel_sensor_resistance_last = fuel_sensor_resistance; // Ohm
+bool fuel_sensor_resistance_updated = false; // Ohm
 uint8_t ambient_temp = 0;
-uint8_t ambient_temp_last = ambient_temp;
+bool ambient_temp_updated = false;
 // Group 3 (Only 0-2)
 uint8_t coolant_temp = 0;
-uint8_t coolant_temp_last = coolant_temp;
+bool coolant_temp_updated = false;
 uint8_t oil_level_ok = 0;
-uint8_t oil_level_ok_last = oil_level_ok;
+bool oil_level_ok_updated = false;
 uint8_t oil_temp = 0;
-uint8_t oil_temp_last = oil_temp;
+bool oil_temp_updated = false;
 // ADDR_ENGINE measurement group entries TODO
 // Group 1 (0th is engine rpm)
 uint8_t temperature_unknown_1 = 0;            // 1
@@ -143,15 +149,15 @@ int8_t lambda_2 = 0;      // 3
 
 /* Computed Stats */
 uint32_t elapsed_seconds_since_start = 0;
-uint32_t elapsed_seconds_since_start_last = elapsed_seconds_since_start;
+bool elapsed_seconds_since_start_updated = false;
 uint16_t elpased_km_since_start = 0;
-uint16_t elpased_km_since_start_last = elpased_km_since_start;
+bool elpased_km_since_start_updated = false;
 uint8_t fuel_burned_since_start = 0;
-uint8_t fuel_burned_since_start_last = fuel_burned_since_start;
+bool fuel_burned_since_start_updated = false;
 float fuel_per_100km = 0;
-float fuel_per_100km_last = fuel_per_100km;
+bool fuel_per_100km_updated = false;
 float fuel_per_hour = 0;
-float fuel_per_hour_last = fuel_per_hour;
+bool fuel_per_hour_updated = false;
 
 /* Display */
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7); // 16x2 display
@@ -160,9 +166,18 @@ int random_integer(int min, int max)
 {
   return random(min, max);
 }
-float random_float()
+
+uint8_t count_digit(int n)
 {
-  return 0.00;
+  if (n == 0)
+    return 1;
+  uint8_t count = 0;
+  while (n != 0)
+  {
+    n = n / 10;
+    ++count;
+  }
+  return count;
 }
 
 /**
@@ -191,31 +206,6 @@ char convert_bool_char(bool value)
   else
     return 'N';
 }
-String convert_int_to_string(int value)
-{
-  char result[15];
-  sprintf(result, "%d", value);
-  return result;
-}
-String convert_int_to_string(uint16_t value)
-{
-  char result[15];
-  sprintf(result, "%d", value);
-  return result;
-}
-
-String floatToString(float v)
-{
-  String res;
-  char buf[16];
-  dtostrf(v, 4, 2, buf);
-  res = String(buf);
-  return res;
-}
-bool check_msg_length(String msg)
-{
-  return msg.length() <= 16; // Display size 16 characters
-}
 
 /**
  * Increment block counter. Min: 0, Max: 254.
@@ -235,146 +225,110 @@ void increase_block_counter()
 }
 
 // Display functions
-void increment_menu()
+void increment_menu(uint8_t &menu_current, uint8_t &menu_current_max)
 {
-  if (menu >= menu_max)
+  if (menu_current >= menu_current_max)
   {
-    menu_last = menu;
-    menu = 0;
+    menu_current = 0;
   }
   else
   {
-    menu++;
+    menu_current++;
   }
   menu_switch = true;
 }
-void decrement_menu()
+void decrement_menu(uint8_t &menu_current, uint8_t &menu_current_max)
 {
-  if (menu == 0)
+  if (menu_current == 0)
   {
-    menu_last = menu;
-    menu = menu_max;
+    menu_current = menu_current_max;
   }
   else
   {
-    menu--;
+    menu_current--;
   }
   menu_switch = true;
-}
-void increment_menu_cockpit_screen()
-{
-  if (menu_cockpit_screen >= menu_cockpit_screen_max)
-  {
-    menu_cockpit_screen = 0;
-  }
-  else
-  {
-    menu_cockpit_screen++;
-  }
-  menu_screen_switch = true;
-}
-void decrement_menu_cockpit_screen()
-{
-  if (menu_cockpit_screen == 0)
-  {
-    menu_cockpit_screen = menu_cockpit_screen_max;
-  }
-  else
-  {
-    menu_cockpit_screen--;
-  }
-  menu_screen_switch = true;
-}
-void increment_menu_experimental_screen()
-{
-  if (menu_experimental_screen >= menu_experimental_screen_max)
-  {
-    menu_experimental_screen = 0;
-  }
-  else
-  {
-    menu_experimental_screen++;
-  }
-  menu_screen_switch = true;
-}
-void decrement_menu_experimental_screen()
-{
-  if (menu_experimental_screen == 0)
-  {
-    menu_experimental_screen = menu_experimental_screen_max;
-  }
-  else
-  {
-    menu_experimental_screen--;
-  }
-  menu_screen_switch = true;
-}
-void increment_menu_settings_screen()
-{
-  if (menu_settings_screen >= menu_settings_screen_max)
-  {
-    menu_settings_screen = 0;
-  }
-  else
-  {
-    menu_settings_screen++;
-  }
-  menu_screen_switch = true;
-}
-void decrement_menu_settings_screen()
-{
-  if (menu_settings_screen == 0)
-  {
-    menu_settings_screen = menu_settings_screen_max;
-  }
-  else
-  {
-    menu_settings_screen--;
-  }
-  menu_screen_switch = true;
 }
 
 // --------------------------------------------------------------------------------------------------
 //                            DISPLAY CODE
 // --------------------------------------------------------------------------------------------------
 
+void lcd_clear(uint8_t x, uint8_t y, uint8_t width = 1)
+{
+  lcd.setCursor(x, y);
+  for (uint8_t i = 0; i < width; i++)
+  {
+    lcd.print(" ");
+  }
+}
+
+void lcd_print(uint8_t x, uint8_t y, String s, uint8_t width = 0)
+{
+  lcd.setCursor(x, y);
+  while (s.length() < width)
+    s += " ";
+  lcd.print(s);
+}
+
+void lcd_print(uint8_t x, uint8_t y, int number, uint8_t width = 0)
+{
+  lcd.setCursor(x, y);
+  lcd.print(number);
+}
+void lcd_print(uint8_t x, uint8_t y, uint8_t number, uint8_t width = 0)
+{
+  lcd.setCursor(x, y);
+  lcd.print(number);
+}
+void lcd_print(uint8_t x, uint8_t y, uint16_t number, uint8_t width = 0)
+{
+  lcd.setCursor(x, y);
+  lcd.print(number);
+}
+void lcd_print(uint8_t x, uint8_t y, uint32_t number, uint8_t width = 0)
+{
+  lcd.setCursor(x, y);
+  lcd.print(number);
+}
+
+void lcd_print(uint8_t x, uint8_t y, float floating_number, uint8_t width = 0)
+{
+  lcd.setCursor(x, y);
+  lcd.print(floating_number);
+}
+
+void lcd_print(uint8_t x, uint8_t y, bool boolean, uint8_t width = 0)
+{
+  lcd_print(x, y, convert_bool_string(boolean), width);
+}
+
+void lcd_print_cockpit(uint8_t x, uint8_t y, uint16_t number, uint8_t width, bool &updated, bool force_update = false)
+{
+  lcd_clear(x, y, width);
+  if (updated || force_update)
+  {
+    uint8_t number_length = count_digit(number);
+    if (number_length <= width)
+    {
+      lcd_print(x, y, number);
+    }
+    updated = false;
+  }
+}
+
 void init_statusbar()
 {
-  lcd.setCursor(0, 0);
-  lcd.print("C:");
-  lcd.setCursor(4, 0);
-  lcd.print("A:");
+  lcd_print(0, 0, "C:");
+  lcd_print(4, 0, "A:");
 }
 /**
  * Status bar: "C:Y A:9999*****"
  */
 void display_statusbar()
 {
-  lcd.setCursor(2, 0);
-  lcd.print(convert_bool_char(connected));
-  String temp_obd_available = String(obd.available());
-  uint8_t temp_obd_available_x_coordinate = 6;
-  uint8_t temp_obd_available_length = temp_obd_available.length();
-  if (temp_obd_available_length < 5 && temp_obd_available_length != 0)
-  {
-    temp_obd_available_x_coordinate += 4 - temp_obd_available_length;
-  }
-  else
-  {
-    temp_obd_available = "9999";
-    temp_obd_available_x_coordinate += temp_obd_available.length();
-  }
-  for (int i = 6; i < 9; i++)
-  {
-    // Clear chars at position 6, 7 and 8 if current number is small
-    if (i < temp_obd_available_x_coordinate)
-    {
-      lcd.setCursor(i, 0);
-      lcd.print(" ");
-    }
-  }
-  lcd.setCursor(temp_obd_available_x_coordinate, 0);
-  lcd.print(temp_obd_available);
+  lcd_print(2, 0, connected);
+  lcd_print(6, 0, obd.available());
 }
 void init_menu_cockpit()
 {
@@ -384,17 +338,13 @@ void init_menu_cockpit()
     switch (menu_cockpit_screen)
     {
     case 0:
-      lcd.setCursor(15, 0);
-      lcd.print("V");
-      lcd.setCursor(13, 1);
-      lcd.print("TBa");
+      lcd_print(15, 0, "V");
+      lcd_print(13, 1, "TBa");
       break;
     default:
-      lcd.setCursor(0, 0);
-      lcd.print("Screen ");
-      lcd.print(menu_cockpit_screen);
-      lcd.setCursor(0, 1);
-      lcd.print("not supported!");
+      lcd_print(0, 0, "Screen", 7);
+      lcd_print(7, 0, menu_cockpit_screen);
+      lcd_print(0, 1, "not supported!");
       break;
     }
     break;
@@ -406,75 +356,65 @@ void init_menu_cockpit()
     switch (menu_cockpit_screen)
     {
     case 0:
-      lcd.setCursor(4, 0);
-      lcd.print("KMH");
-      lcd.setCursor(13, 0);
-      lcd.print("RPM");
-      lcd.setCursor(3, 1);
-      lcd.print("C"); // Coolant
-      lcd.setCursor(8, 1);
-      lcd.print("C"); // Oil
-      lcd.setCursor(13, 1);
-      lcd.print("L"); // Fuel
+      lcd_print(4, 0, "KMH");
+      lcd_print(13, 0, "RPM");
+      lcd_print(3, 1, "C");  // Coolant
+      lcd_print(8, 1, "C");  // Oil
+      lcd_print(13, 1, "L"); // Fuel
       break;
     case 1:
-      lcd.setCursor(2, 0);
-      lcd.print("OL");
-      lcd.setCursor(7, 0);
-      lcd.print("OP");
-      lcd.setCursor(13, 0);
-      lcd.print("AT");
-      lcd.setCursor(6, 1);
-      lcd.print("KM");
-      lcd.setCursor(13, 1);
-      lcd.print("FSR");
+      lcd_print(2, 0, "OL");
+      lcd_print(7, 0, "OP");
+      lcd_print(13, 0, "AT");
+      lcd_print(6, 1, "KM");
+      lcd_print(13, 1, "FSR");
       break;
     case 2:
+      lcd_print(6, 0, "TIME");
+      lcd_print(7, 1, "L/100km");
+      break;
     case 3:
+      lcd_print(9, 0, "secs");
+      lcd_print(6, 1, "km");
+      break;
     case 4:
+      lcd_print(6, 0, "km burned");
+      lcd_print(7, 1, "L/h");
+      break;
     default:
-      lcd.setCursor(0, 0);
-      lcd.print("Screen ");
-      lcd.print(menu_cockpit_screen);
-      lcd.setCursor(0, 1);
-      lcd.print("not supported!");
+      lcd_print(0, 0, "Screen", 7);
+      lcd_print(7, 0, menu_cockpit_screen);
+      lcd_print(0, 1, "not supported!");
       break;
     }
     break;
   case ADDR_CENTRAL_CONV:
   default:
     // Addr not supported
-    lcd.setCursor(0, 0);
-    lcd.print("Addr ");
-    lcd.print(String(addr_selected, HEX));
-    lcd.setCursor(0, 1);
-    lcd.print("not supported!");
+    lcd_print(0, 0, "Addr", 5);
+    lcd_print(6, 0, String(addr_selected, HEX), 2);
+    lcd_print(0, 1, "not supported!");
     break;
   }
 }
 void init_menu_experimental()
 {
-  lcd.setCursor(0, 0);
-  lcd.print("G:    Group menu");
-  lcd.setCursor(0, 1);
-  lcd.print("not supported!");
+  lcd_print(0, 0, "G:");
+  lcd_print(6, 0, "Group menu");
+  lcd_print(0, 1, "not supported!");
 }
 void init_menu_debug()
 {
   // Addr not supported
-  lcd.setCursor(0, 0);
-  lcd.print("Debug menu");
-  lcd.setCursor(0, 1);
-  lcd.print("not supported!");
+  lcd_print(0, 0, "Debug menu");
+  lcd_print(0, 1, "not supported!");
 }
 
 void init_menu_dtc()
 {
   // Addr not supported
-  lcd.setCursor(0, 0);
-  lcd.print("DTC menu");
-  lcd.setCursor(0, 1);
-  lcd.print("not supported!");
+  lcd_print(0, 0, "DTC menu");
+  lcd_print(0, 1, "not supported!");
 }
 void init_menu_settings()
 {
@@ -482,23 +422,18 @@ void init_menu_settings()
   {
   case 0:
     // Exit
-    lcd.setCursor(0, 0);
-    lcd.print("Exit ECU:");
-    lcd.setCursor(0, 1);
-    lcd.print("< Press select >");
+    lcd_print(0, 0, "Exit ECU:");
+    lcd_print(0, 1, "< Press select >");
     break;
   case 1:
-    lcd.setCursor(0, 0);
-    lcd.print("KWP Mode:");
-    lcd.setCursor(0, 1);
-    lcd.print("<              >");
+    lcd_print(0, 0, "KWP Mode:");
+    lcd_print(0, 1, "<");
+    lcd_print(15, 1, ">");
     break;
   default:
-    lcd.setCursor(0, 0);
-    lcd.print("Menu screen ");
-    lcd.print(menu_settings_screen);
-    lcd.setCursor(0, 1);
-    lcd.print("not supported!");
+    lcd_print(0, 0, "Menu screen", 12);
+    lcd_print(12, 0, menu_settings_screen, 12);
+    lcd_print(0, 1, "not supported!");
     break;
   }
 }
@@ -507,191 +442,44 @@ void display_menu_cockpit(bool force_update = false)
   switch (addr_selected)
   {
   case ADDR_ENGINE:
-    lcd.setCursor(0, 0);
-    lcd.print(voltage);
-    lcd.setCursor(0, 1);
-    lcd.print(tb_angle);
-
+    lcd_print(0, 0, voltage);
+    lcd_print(0, 1, tb_angle);
     break;
-  case ADDR_ABS_BRAKES:
+  /*case ADDR_ABS_BRAKES:
     break;
   case ADDR_AUTO_HVAC:
-    break;
+    break;*/
   case ADDR_INSTRUMENTS:
     switch (menu_cockpit_screen)
     {
     case 0:
-      if (vehicle_speed != vehicle_speed_last || force_update)
-      {
-        lcd.setCursor(0, 0);
-        lcd.print("   ");
-        lcd.setCursor(0, 0);
-        if (vehicle_speed < 1000)
-        {
-          lcd.print(vehicle_speed);
-        }
-        else
-        {
-          lcd.print("ERR");
-        }
-        vehicle_speed_last = vehicle_speed;
-      }
-      if (engine_rpm != engine_rpm_last || force_update)
-      {
-        lcd.setCursor(8, 0);
-        lcd.print("    ");
-        lcd.setCursor(8, 0);
-        if (engine_rpm < 10000)
-        {
-          lcd.print(engine_rpm);
-        }
-        else
-        {
-          lcd.print("ERRO");
-        }
-        engine_rpm_last = engine_rpm;
-      }
-      if (coolant_temp != coolant_temp_last || force_update)
-      {
-        lcd.setCursor(0, 1);
-        lcd.print("   ");
-        lcd.setCursor(0, 1);
-        if (coolant_temp < 1000)
-        {
-          lcd.print(coolant_temp);
-        }
-        else
-        {
-          lcd.print("ER ");
-        }
-
-        coolant_temp_last = coolant_temp;
-      }
-      if (oil_temp != oil_temp_last || force_update)
-      {
-        lcd.setCursor(5, 1);
-        lcd.print("   ");
-        lcd.setCursor(5, 1);
-        if (oil_temp < 1000)
-        {
-          lcd.print(oil_temp);
-        }
-        else
-        {
-          lcd.print("ER ");
-        }
-
-        oil_temp_last = oil_temp;
-      }
-      if (fuel_level != fuel_level_last || force_update)
-      {
-        lcd.setCursor(10, 1);
-        lcd.print("  ");
-        lcd.setCursor(10, 1);
-        if (fuel_level < 100)
-        {
-          lcd.print(fuel_level);
-        }
-        else
-        {
-          lcd.print("ER");
-        }
-
-        fuel_level_last = fuel_level;
-      }
+      lcd_print_cockpit(0, 0, vehicle_speed, 3, vehicle_speed_updated, force_update);
+      lcd_print_cockpit(8, 0, engine_rpm, 4, engine_rpm_updated, force_update);
+      lcd_print_cockpit(0, 1, coolant_temp, 3, coolant_temp_updated, force_update);
+      lcd_print_cockpit(5, 1, oil_temp, 3, oil_temp_updated, force_update);
+      lcd_print_cockpit(10, 1, fuel_level, 2, fuel_level_updated, force_update);
       break;
     case 1:
-      if (oil_level_ok != oil_level_ok_last || force_update)
-      {
-        lcd.setCursor(0, 0);
-        lcd.print(" ");
-        lcd.setCursor(0, 0);
-        if (oil_level_ok > 0)
-          lcd.print("Y");
-        else
-          lcd.print("N");
-        oil_level_ok_last = oil_level_ok;
-      }
-      if (oil_pressure_min != oil_pressure_min_last || force_update)
-      {
-        lcd.setCursor(5, 0);
-        lcd.print(" ");
-        lcd.setCursor(5, 0);
-        if (oil_pressure_min > 0)
-          lcd.print("Y");
-        else
-          lcd.print("N");
-        oil_pressure_min_last = oil_pressure_min;
-      }
-      if (ambient_temp != ambient_temp_last || force_update)
-      {
-        lcd.setCursor(10, 0);
-        lcd.print("  ");
-        lcd.setCursor(10, 0);
-        if (ambient_temp < 100)
-          lcd.print(ambient_temp);
-        else
-          lcd.print("ER");
-        ambient_temp_last = ambient_temp;
-      }
-
-      if (odometer != odometer_last || force_update)
-      {
-        lcd.setCursor(0, 1);
-        lcd.print("      ");
-        lcd.setCursor(0, 1);
-        if (odometer < 1000000)
-          lcd.print(odometer);
-        else
-          lcd.print("ERROR!");
-        odometer_last = odometer;
-      }
-      if (fuel_sensor_resistance != fuel_sensor_resistance_last || force_update)
-      {
-        lcd.setCursor(9, 1);
-        lcd.print("   ");
-        lcd.setCursor(9, 1);
-        if (fuel_sensor_resistance < 1000)
-          lcd.print(fuel_sensor_resistance);
-        else
-          lcd.print("ERR");
-        fuel_sensor_resistance_last = fuel_sensor_resistance;
-      }
+      lcd_print_cockpit(0, 0, oil_level_ok, 1, oil_level_ok_updated, force_update);
+      lcd_print_cockpit(5, 0, oil_pressure_min, 1, oil_pressure_min_updated, force_update);
+      lcd_print_cockpit(10, 0, ambient_temp, 2, ambient_temp_updated, force_update);
+      lcd_print_cockpit(0, 1, odometer, 6, odometer_updated, force_update);
+      lcd_print_cockpit(9, 1, fuel_sensor_resistance, 3, fuel_sensor_resistance_updated, force_update);
       break;
     case 2:
+      lcd_print_cockpit(0, 0, time_ecu, 5, time_ecu_updated, force_update);
+      lcd_print_cockpit(0, 1, fuel_per_100km, 6, fuel_per_100km_updated, force_update);
       break;
     case 3:
+      lcd_print_cockpit(0, 0, elapsed_seconds_since_start, 8, elapsed_seconds_since_start_updated, force_update);
+      lcd_print_cockpit(0, 1, elpased_km_since_start, 5, elpased_km_since_start_updated, force_update);
       break;
     case 4:
+      lcd_print_cockpit(0, 0, fuel_burned_since_start, 5, fuel_burned_since_start_updated, force_update);
+      lcd_print_cockpit(0, 1, fuel_per_hour, 6, fuel_per_hour_updated, force_update);
       break;
     default:
       break;
-    }
-
-    if (fuel_per_100km != fuel_per_100km_last || force_update)
-    {
-
-      fuel_per_100km_last = fuel_per_100km;
-    }
-    if (time_ecu != time_ecu_last || force_update)
-    {
-      time_ecu_last = time_ecu;
-    }
-    if (elapsed_seconds_since_start != elapsed_seconds_since_start_last || force_update)
-    {
-      elapsed_seconds_since_start_last = elapsed_seconds_since_start;
-    }
-    if (elpased_km_since_start != elpased_km_since_start_last || force_update)
-    {
-      elpased_km_since_start_last = elpased_km_since_start;
-    }
-    if (fuel_burned_since_start != fuel_burned_since_start_last || force_update)
-    {
-      fuel_burned_since_start_last = fuel_burned_since_start;
-    }
-    if (fuel_per_hour != fuel_per_hour_last || force_update)
-    {
-      fuel_per_hour_last = fuel_per_hour;
     }
     break;
   case ADDR_CENTRAL_CONV:
@@ -702,15 +490,7 @@ void display_menu_cockpit(bool force_update = false)
 }
 void display_menu_experimental()
 {
-  lcd.setCursor(3, 0);
-  if (group_current <= 64)
-  {
-    lcd.print(group_current);
-  }
-  else
-  {
-    lcd.print("ER");
-  }
+  lcd_print_cockpit(3, 0, group_current, 2, group_current_updated);
 }
 void display_menu_debug()
 {
@@ -729,8 +509,7 @@ void display_menu_settings(bool force_update = false)
     // KWP mode
     if (kwp_mode != kwp_mode_last || force_update)
     {
-      lcd.setCursor(4, 1);
-      lcd.print("       ");
+      lcd_clear(4, 1, 7);
       lcd.setCursor(4, 1);
       switch (kwp_mode)
       {
@@ -889,7 +668,6 @@ void disconnect()
   odometer_start = 0;
   fuel_level_start = 0;
   menu = 0;
-  menu_last = menu;
   menu_switch = false;
   button_read_time = 0;
   addr_selected = 0x00;
@@ -1085,11 +863,7 @@ bool KWPSendBlock(char *s, int size)
       if (complement != (data ^ 0xFF))
       {
         Serial.println(F("ERROR: invalid complement"));
-        lcd.setCursor(0, 0);
-        lcd.print("Sent: " + String(char(data)) + " Resp: " + String(char(complement)));
-        lcd.setCursor(0, 1);
-        lcd.print("ERR: INV COMPL");
-        // errorData++;
+        lcd_print(0, 1, "ERR: INV COMPL");
         return false;
       }
     }
@@ -1148,8 +922,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
   if (size > maxsize)
   {
     Serial.println(F(" - KWPReceiveBlock error: Invalid maxsize"));
-    lcd.setCursor(0, 1);
-    lcd.print("ERR:size>maxsize");
+    lcd_print(0, 1, "ERR:size>maxsize");
     delay(2000);
     return false;
   }
@@ -1170,8 +943,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
       if (data == -1)
       {
         Serial.println(F(" - KWPReceiveBlock error: Nothing to listen to (Available=0) or empty buffer!"));
-        lcd.setCursor(0, 1);
-        lcd.print("ERROR data = -1 ");
+        lcd_print(0, 1, "ERROR data = -1 ");
         delay(1700);
         return false;
       }
@@ -1181,8 +953,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
       {
         if (source == 1 && (data != 15 || data != 3) && obd.available())
         {
-          lcd.setCursor(0, 1);
-          lcd.print("WARN block length");
+          lcd_print(0, 1, "WARN block length");
           Serial.println(F(" - KWPReceiveBlock warn: Communication error occured, check block length! com_error set true."));
           com_error = true;
           size = 6;
@@ -1195,8 +966,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         {
 
           Serial.println(F(" - KWPReceiveBlock error: Invalid maxsize"));
-          lcd.setCursor(0, 1);
-          lcd.print("ERR:size>maxsize");
+          lcd_print(0, 1, "ERR:size>maxsize");
           delay(2000);
           return false;
         }
@@ -1227,10 +997,9 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         {
           if (initialization_phase)
           {
-            lcd.setCursor(0, 1);
-            lcd.print("ERR: BLOCK COUNT");
+            lcd_print(0, 1, "ERR:size>maxsize");
             delay(1000);
-            lcd.print("Exp:" + String(data) + " Is:" + String(block_counter) + "         ");
+            lcd_print(0, 1, "Exp:" + String(data) + " Is:" + String(block_counter) + "         ");
             delay(3333);
           }
           Serial.print(F(" - KWPReceiveBlock error: Invalid block counter. Expected: "));
@@ -1279,17 +1048,15 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         Serial.println(F("No connection to ECU! Check wiring."));
       }
 
-      lcd.setCursor(0, 1);
       if (recvcount == 0)
       {
-        lcd.print("Nothing received!");
+        lcd_print(0, 1, "Nothing received!");
         delay(1222);
-        lcd.setCursor(0, 1);
-        lcd.print("Check wiring!");
+        lcd_print(0, 1, "Check wiring!");
       }
       else
       {
-        lcd.print("Timeout");
+        lcd_print(0, 1, "Timeout");
       }
       delay(1222);
       // errorTimeout++;
@@ -1358,8 +1125,7 @@ bool readConnectBlocks(bool initialization_phase = false)
     {
       Serial.println(F(" - Readconnectblocks ERROR: unexpected answer"));
 
-      lcd.setCursor(0, 1);
-      lcd.print("ERR: s[2]!=xF6    ");
+      lcd_print(0, 1, "ERR: s[2]!=xF6");
       delay(2000);
       // errorData++;
       return false;
@@ -1423,8 +1189,7 @@ bool readSensors(int group)
   if (s[2] != '\xe7')
   {
     Serial.println(F("ERROR: invalid answer"));
-    lcd.setCursor(0, 1);
-    lcd.print("ERR: s[2]!=xe7  ");
+    lcd_print(0, 1, "ERR: s[2]!=xE7");
     delay(2000);
     // errorData++;
     return false;
@@ -1738,15 +1503,26 @@ bool readSensors(int group)
         {
         case 0:
           // 0.0 km/h Speed
-          vehicle_speed = (int)v;
+          if (vehicle_speed != (uint16_t)v)
+          {
+            vehicle_speed = (uint16_t)v;
+            vehicle_speed_updated = true;
+          }
           break;
         case 1:
           // 0 /min Engine Speed
-          engine_rpm = (int)v;
+          if (engine_rpm != (uint16_t)v)
+          {
+            engine_rpm = (uint16_t)v;
+            engine_rpm_updated = true;
+          }
           break;
         case 2:
           // Oil Pr. 2 < min (Oil pressure 0.9 bar)
-          oil_pressure_min = (int)v;
+          if (oil_pressure_min != (uint16_t)v)
+          {
+            oil_pressure_min = (uint16_t)v;
+          }
           break;
         case 3:
           // 21:50 Time
@@ -2093,8 +1869,7 @@ bool delete_DTC_codes()
 bool kwp_exit()
 {
   lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Exiting...");
+  lcd_print(0, 0, "Exiting...");
   Serial.println(F("Performing manual KWP exit..."));
   // Perform KWP end output block
   delay(15);
@@ -2104,16 +1879,14 @@ bool kwp_exit()
   {
     Serial.println(F("Performing manual KWP exit... Failed. Exiting anyway."));
 
-    lcd.setCursor(0, 1);
-    lcd.print("error!");
+    lcd_print(0, 1, "error!");
     return false;
   }
   else
   {
     Serial.println(F("Performing manual KWP exit... Succesful. Your ECU is very grateful for this."));
 
-    lcd.setCursor(0, 1);
-    lcd.print("success! :)");
+    lcd_print(0, 1, "success!");
   }
   return true;
 }
@@ -2128,8 +1901,7 @@ bool obd_connect()
   lcd.clear();
   init_statusbar();
   display_statusbar();
-  lcd.setCursor(0, 1);
-  lcd.print("->PRESS ENTER<-");
+  lcd_print(0, 1, "->PRESS ENTER<-");
   bool select = false;
   while (!select)
   {
@@ -2142,8 +1914,7 @@ bool obd_connect()
     delay(10);
   }
 
-  lcd.setCursor(0, 1);
-  lcd.print("Init...         ");
+  lcd_print(0, 1, "Init...", 16);
   obd.begin(baud_rate); // Baud rate 9600 for Golf 4/Bora or 10400 in weird cases
   display_statusbar();
   Serial.print(F(" - KWP5BaudInit on addr 0x"));
@@ -2151,8 +1922,7 @@ bool obd_connect()
 
   if (!simulation_mode_active && !KWP5BaudInit(addr_selected))
   {
-    lcd.setCursor(0, 1);
-    lcd.print("5BaudInit  ERROR");
+    lcd_print(0, 1, "5BaudInit  ERROR");
     Serial.println(F(" - KWP5BaudInit ERROR"));
 
     return false;
@@ -2165,15 +1935,13 @@ bool obd_connect()
   if (!simulation_mode_active && !KWPReceiveBlock(response, 3, response_size, -1, true))
   {
 
-    lcd.setCursor(0, 1);
-    lcd.print("Handshake error");
+    lcd_print(0, 1, "Handshake error");
     display_statusbar();
     serial_print_kwp_handshake_error(response);
 
     delay(1444);
     display_statusbar();
-    lcd.setCursor(0, 1);
-    lcd.print("ECU: " + String((uint8_t)response[0], HEX) + " " + String((uint8_t)response[1], HEX) + " " + String((uint8_t)response[2], HEX) + "      ");
+    lcd_print(0, 1, "ECU: " + String((uint8_t)response[0], HEX) + " " + String((uint8_t)response[1], HEX) + " " + String((uint8_t)response[2], HEX), 16);
     delay(2122);
     // printError("connect() KWPReceiveBlock error");
     return false;
@@ -2182,37 +1950,31 @@ bool obd_connect()
   if (!simulation_mode_active && ((((uint8_t)response[0]) != 0x55) || (((uint8_t)response[1]) != 0x01) || (((uint8_t)response[2]) != 0x8A))) // 85 1 138
   {
     display_statusbar();
-    lcd.setCursor(0, 1);
-    lcd.print("Handshake  WRONG");
+    lcd_print(0, 1, "Handshake  WRONG");
     serial_print_kwp_handshake_error(response);
 
     delay(1222);
     display_statusbar();
-    lcd.setCursor(0, 1);
-    lcd.print("ECU: " + String((uint8_t)response[0], HEX) + " " + String((uint8_t)response[1], HEX) + " " + String((uint8_t)response[2], HEX) + "      ");
+    lcd_print(0, 1, "ECU: " + String((uint8_t)response[0], HEX) + " " + String((uint8_t)response[1], HEX) + " " + String((uint8_t)response[2], HEX), 16);
     delay(2122);
     // printError("Expected [" + String(0x55) + " " + String(0x01) + " " + String(0x8A) + "] got [" + String((uint8_t)response[0]) + " " + String((uint8_t)response[1]) + " " + String((uint8_t)response[2]) + "]");
     return false;
   }
   display_statusbar();
-  lcd.setCursor(0, 1);
-  lcd.print("Handshake  RIGHT");
+  lcd_print(0, 1, "Handshake  RIGHT");
   Serial.println(F(" - KWP5BaudInit Handshake DONE"));
   Serial.println(F(" - KWP5BaudInit DONE"));
 
-  lcd.setCursor(0, 1);
-  lcd.print("5BaudInit   DONE");
+  lcd_print(0, 1, "BaudInit   DONE");
   display_statusbar();
-  lcd.setCursor(0, 1);
-  lcd.print("Read ECU data...");
+  lcd_print(0, 1, "Read ECU data...");
 
   Serial.println(F(" - ReadConnectBlocks"));
 
   if (!simulation_mode_active && !readConnectBlocks(true))
   {
     display_statusbar();
-    lcd.setCursor(0, 1);
-    lcd.print("Read ECU data..N");
+    lcd_print(0, 1, "Read ECU data..N");
     // printError("readConnectBlocks() error");
     return false;
   }
@@ -2221,11 +1983,9 @@ bool obd_connect()
 
   connected = true;
   display_statusbar();
-  lcd.setCursor(0, 1);
-  lcd.print("Read ECU data..Y");
+  lcd_print(0, 1, "Read ECU data..Y");
   // printDebug("Connection to ECU established!");
-  lcd.setCursor(0, 1);
-  lcd.print(" ECU connected! ");
+  lcd_print(1, 1, "ECU connected!", 16);
   display_statusbar();
   return true;
 }
@@ -2250,10 +2010,9 @@ bool connect()
   uint8_t userinput_ecu_address = 0; // 1 or 17
 
   lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Debug mode on?");
-  lcd.setCursor(0, 1);
-  lcd.print("<-- Y      N -->");
+  lcd_print(0, 0, "Debug mode on?");
+  lcd_print(0, 1, "<-- Y");
+  lcd_print(11, 1, "N -->");
   if (connection_attempts_counter > 0)
   {
     userinput_debug_mode = debug_mode_enabled;
@@ -2275,12 +2034,12 @@ bool connect()
   }
   if (userinput_debug_mode == 0)
   {
-    lcd.print("           N -->");
+    lcd_clear(0, 1, 5);
     debug_mode_enabled = false;
   }
   else if (userinput_debug_mode == 1)
   {
-    lcd.print("<-- Y           ");
+    lcd_clear(11, 1, 5);
     debug_mode_enabled = true;
   }
   else
@@ -2290,10 +2049,9 @@ bool connect()
   delay(555);
 
   lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Select con mode:");
-  lcd.setCursor(0, 1);
-  lcd.print("<- ECU    SIM ->");
+  lcd_print(0, 0, "Select con mode:");
+  lcd_print(0, 1, "<- ECU");
+  lcd_print(10, 1, "SIM ->");
   if (connection_attempts_counter > 0)
   {
     userinput_simulation_mode = simulation_mode_active;
@@ -2315,12 +2073,12 @@ bool connect()
   }
   if (userinput_simulation_mode == 0)
   {
-    lcd.print("<- ECU          ");
+    lcd_clear(10, 1, 6);
     simulation_mode_active = false;
   }
   else if (userinput_simulation_mode == 1)
   {
-    lcd.print("          SIM ->");
+    lcd_clear(0, 1, 6);
     simulation_mode_active = true;
   }
   else
@@ -2330,10 +2088,8 @@ bool connect()
   delay(555);
 
   lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("<--   Baud:  -->");
-  lcd.setCursor(0, 1);
-  lcd.print("  -> " + convert_int_to_string(userinput_baudrate) + "     ");
+  lcd_print(0, 0, "<--   Baud:  -->");
+  lcd_print(2, 1, "-> " + String(userinput_baudrate), 10);
   bool pressed_enter = false;
   while (!pressed_enter)
   {
@@ -2349,8 +2105,7 @@ bool connect()
         userinput_baudrate_pointer++;
       // userinput_baudrate_last = userinput_baudrate;
       userinput_baudrate = supported_baud_rates[userinput_baudrate_pointer];
-      lcd.setCursor(0, 1);
-      lcd.print("  -> " + convert_int_to_string(userinput_baudrate) + "     ");
+      lcd_print(2, 1, "-> " + String(userinput_baudrate), 10);
       delay(333);
     }
     else if (400 <= user_input && user_input < 600)
@@ -2364,8 +2119,7 @@ bool connect()
         userinput_baudrate_pointer--;
       // userinput_baudrate_last = userinput_baudrate;
       userinput_baudrate = supported_baud_rates[userinput_baudrate_pointer];
-      lcd.setCursor(0, 1);
-      lcd.print("  -> " + convert_int_to_string(userinput_baudrate) + "     ");
+      lcd_print(2, 1, "-> " + String(userinput_baudrate), 10);
       delay(333);
     }
     else if (user_input >= 600 && user_input < 800)
@@ -2391,10 +2145,9 @@ bool connect()
   delay(555);
 
   lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Select ECU addr:");
-  lcd.setCursor(0, 1);
-  lcd.print("<-- 01    17 -->");
+  lcd_print(0, 0, "Select ECU addr:");
+  lcd_print(0, 1, "<-- 01");
+  lcd_print(10, 1, "17 -->");
   while (userinput_ecu_address == 0)
   {
     int user_input = analogRead(0);
@@ -2412,14 +2165,12 @@ bool connect()
   }
   if (userinput_ecu_address == 1)
   {
-    lcd.setCursor(0, 1);
-    lcd.print("<-- 01          ");
+    lcd_clear(10, 1, 6);
     addr_selected = ADDR_ENGINE;
   }
   else if (userinput_ecu_address == 17)
   {
-    lcd.setCursor(0, 1);
-    lcd.print("          17 -->");
+    lcd_clear(0, 1, 6);
     addr_selected = ADDR_INSTRUMENTS;
   }
   else
@@ -2472,10 +2223,8 @@ void setup()
 
   // Startup animation
   lcd.clear();
-  lcd.setCursor(4, 0);
-  lcd.print("O B D");
-  lcd.setCursor(1, 1);
-  lcd.print("D I S P L A Y ");
+  lcd_print(4, 0, "O B D");
+  lcd_print(1, 1, "D I S P L A Y");
 
   delay(777);
 }
@@ -2557,13 +2306,13 @@ void loop()
     {
       // Right button
       button_pressed = true;
-      increment_menu();
+      increment_menu(menu, menu_max);
     }
     else if (user_input < 600 && user_input >= 400)
     {
       // Left button
       button_pressed = true;
-      decrement_menu();
+      decrement_menu(menu, menu_max);
     }
     else
     {
@@ -2574,13 +2323,13 @@ void loop()
         {
           // Up button
           button_pressed = true;
-          increment_menu_cockpit_screen();
+          increment_menu(menu_cockpit_screen, menu_cockpit_screen_max);
         }
         else if (user_input >= 200 && user_input < 400)
         {
           // Down button
           button_pressed = true;
-          decrement_menu_cockpit_screen();
+          decrement_menu(menu_cockpit_screen, menu_cockpit_screen_max);
         }
         break;
       case 1:
@@ -2588,13 +2337,13 @@ void loop()
         {
           // Up button
           button_pressed = true;
-          increment_menu_experimental_screen();
+          increment_menu(menu_experimental_screen, menu_experimental_screen_max);
         }
         else if (user_input >= 200 && user_input < 400)
         {
           // Down button
           button_pressed = true;
-          decrement_menu_experimental_screen();
+          decrement_menu(menu_experimental_screen, menu_experimental_screen_max);
         }
         break;
       case 2:
@@ -2606,13 +2355,13 @@ void loop()
         {
           // Up button
           button_pressed = true;
-          increment_menu_settings_screen();
+          increment_menu(menu_settings_screen, menu_settings_screen_max);
         }
         else if (user_input >= 200 && user_input < 400)
         {
           // Down button
           button_pressed = true;
-          decrement_menu_settings_screen();
+          decrement_menu(menu_settings_screen, menu_settings_screen_max);
         }
         else
         {
@@ -2642,8 +2391,6 @@ void loop()
                 kwp_mode = KWP_MODE_ACK;
                 break;
               }
-              Serial.print(F("Switched kwp_mode to "));
-              Serial.print(kwp_mode);
 
               button_pressed = true;
             }
