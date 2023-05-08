@@ -43,6 +43,8 @@ uint8_t pin_tx = 2; // Transmit
 const uint8_t KWP_MODE_ACK = 0;         // Send ack block to keep connection alive
 const uint8_t KWP_MODE_READSENSORS = 1; // Read all sensors from the connected ADDR
 const uint8_t KWP_MODE_READGROUP = 2;   // Read only specified group from connected ADDR
+const char CHAR_YES = 'Y';
+const char CHAR_NO = 'N';
 
 // Backend
 NewSoftwareSerial obd(pin_rx, pin_tx, false); // rx, tx, inverse logic = false
@@ -123,6 +125,7 @@ void reset_dtc_status_errors_array()
 }
 
 /* ADDR_INSTRUMENTS measurement group entries, chronologically 0-3 in each group */
+
 // Group 1
 uint16_t vehicle_speed = 0;
 bool vehicle_speed_updated = false;
@@ -216,11 +219,6 @@ void reset_variables()
 /* Display */
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7); // 16x2 display
 
-int random_integer(int min, int max)
-{
-  return random(min, max);
-}
-
 uint8_t count_digit(int n)
 {
   if (n == 0)
@@ -244,21 +242,21 @@ String convert_bool_string(bool value)
 {
   if (value)
   {
-    return "Y";
+    return String(CHAR_YES);
   }
   else
   {
-    return "N";
+    return String(CHAR_NO);
   }
 }
 char convert_bool_char(bool value)
 {
   if (value)
   {
-    return 'Y';
+    return CHAR_YES;
   }
   else
-    return 'N';
+    return CHAR_NO;
 }
 
 /**
@@ -675,22 +673,18 @@ void display_menu_experimental(bool force_update = false)
 {
   lcd_print_cockpit(2, 0, group_current, 2, group_current_updated, force_update);
   lcd_print_cockpit(2, 1, (uint8_t)group_side, 2, group_side_updated, force_update);
-  if (!group_side)
+  uint8_t temp_first_pointer = 0;
+  uint8_t temp_second_pointer = 1;
+  if (group_side)
   {
-    // Side 0
-    lcd_print_cockpit_float(5, 0, v_temp[0], 5, k_temp_updated, force_update);
-    lcd_print_cockpit_float(5, 1, v_temp[1], 5, k_temp_updated, force_update);
-    lcd_print_cockpit(11, 0, unit_temp[0], 5, unit_temp_updated, force_update);
-    lcd_print_cockpit(11, 1, unit_temp[1], 5, unit_temp_updated, force_update);
+    temp_first_pointer = 2;
+    temp_second_pointer = 3;
   }
-  else
-  {
-    // Side 1
-    lcd_print_cockpit_float(5, 0, v_temp[2], 5, k_temp_updated, force_update);
-    lcd_print_cockpit_float(5, 1, v_temp[3], 5, k_temp_updated, force_update);
-    lcd_print_cockpit(11, 0, unit_temp[2], 5, unit_temp_updated, force_update);
-    lcd_print_cockpit(11, 1, unit_temp[3], 5, unit_temp_updated, force_update);
-  }
+
+  lcd_print_cockpit_float(5, 0, v_temp[temp_first_pointer], 5, k_temp_updated, force_update);
+  lcd_print_cockpit_float(5, 1, v_temp[temp_second_pointer], 5, k_temp_updated, force_update);
+  lcd_print_cockpit(11, 0, unit_temp[temp_first_pointer], 5, unit_temp_updated, force_update);
+  lcd_print_cockpit(11, 1, unit_temp[temp_second_pointer], 5, unit_temp_updated, force_update);
 }
 void display_menu_debug()
 {
@@ -766,80 +760,45 @@ void display_menu_settings(bool force_update = false)
 }
 
 bool engine_rpm_switch = true;
-bool kmh_switch = true;
-bool coolant_switch = true;
-bool oil_switch = true;
-bool fuellevel_switch = true;
-bool fuelconsumption_switch = true;
+bool vehicle_speed_switch = true;
+bool coolant_temp_switch = true;
+bool oil_temp_switch = true;
+bool oil_level_ok_switch = true;
+bool fuel_level_switch = true;
+void simulate_values_helper(uint8_t &val, uint8_t amount_to_change, bool &val_switch, uint8_t maximum, uint8_t minimum = 0)
+{
+  if (val_switch)
+    val += amount_to_change;
+  else
+    val -= amount_to_change;
+
+  if (val_switch && val >= maximum)
+    val_switch = false;
+  else if (!val_switch && val <= minimum)
+    val_switch = true;
+}
+void simulate_values_helper(uint16_t &val, uint8_t amount_to_change, bool &val_switch, uint16_t maximum, uint16_t minimum = 0)
+{
+  if (val_switch)
+    val += amount_to_change;
+  else
+    val -= amount_to_change;
+
+  if (val_switch && val >= maximum)
+    val_switch = false;
+  else if (!val_switch && val <= minimum)
+    val_switch = true;
+}
 void simulate_values()
 {
-  // Simulate some values
-  increase_block_counter();
-  if (random(0, 4) == 1)
-    com_error = !com_error;
+  increase_block_counter();                                            // Simulate some values
+  simulate_values_helper(vehicle_speed, 1, vehicle_speed_switch, 200); // Vehicle speed
+  simulate_values_helper(engine_rpm, 1, engine_rpm_switch, 7100);      // Engine RPM
+  simulate_values_helper(coolant_temp, 1, coolant_temp_switch, 160);   // Coolant temperature
+  simulate_values_helper(oil_temp, 1, oil_temp_switch, 160);           // Oil Temperature
+  simulate_values_helper(oil_level_ok, 1, oil_level_ok_switch, 8);     // Oil level ok
+  simulate_values_helper(fuel_level, 1, fuel_level_switch, 57);        // Fuel
 
-  // Vehicle speed
-  if (kmh_switch)
-    vehicle_speed += 1;
-  else
-    vehicle_speed -= 1;
-  if (kmh_switch && vehicle_speed >= 200)
-    kmh_switch = false;
-  else if (!kmh_switch && vehicle_speed <= 0)
-    kmh_switch = true;
-
-  // Engine RPM
-  if (engine_rpm_switch)
-    engine_rpm += 77;
-  else
-    engine_rpm -= 77;
-  if (engine_rpm_switch && engine_rpm >= 7100)
-    engine_rpm_switch = false;
-  else if (!engine_rpm_switch && engine_rpm <= 0)
-    engine_rpm_switch = true;
-
-  // Coolant temperature
-  if (coolant_switch)
-    coolant_temp += 1;
-  else
-    coolant_temp -= 1;
-  if (coolant_switch && coolant_temp >= 160)
-    coolant_switch = false;
-  else if (!coolant_switch && coolant_temp <= 0)
-    coolant_switch = true;
-
-  // Oil Temperature
-  if (oil_switch)
-    oil_temp += 1;
-  else
-    oil_temp -= 1;
-  if (oil_switch && oil_temp >= 160)
-    oil_switch = false;
-  else if (!oil_switch && oil_temp <= 0)
-    oil_switch = true;
-
-  // Oil level ok
-  oil_level_ok = 1;
-
-  // Fuel
-  if (fuellevel_switch)
-    fuel_level += 1;
-  else
-    fuel_level -= 1;
-  if (fuellevel_switch && fuel_level >= 57)
-    fuellevel_switch = false;
-  else if (!fuellevel_switch && fuel_level <= 0)
-    fuellevel_switch = true;
-
-  // Fuel consumption
-  if (fuelconsumption_switch)
-    fuel_per_100km += 1;
-  else
-    fuel_per_100km -= 1;
-  if (fuelconsumption_switch && fuel_per_100km >= 25)
-    fuelconsumption_switch = false;
-  else if (!fuelconsumption_switch && fuel_per_100km <= 0)
-    fuelconsumption_switch = true;
 }
 
 void compute_values()
@@ -857,9 +816,7 @@ void compute_values()
 
 void serial_print_kwp_handshake_error(char response[3])
 {
-  Serial.println(F(" - KWPReceiveBlock Handshake error (DEFAULT= 0x00 0x00 0x00)"));
-  Serial.print(F("Response from ECU: "));
-  Serial.print(F("Expected ["));
+  Serial.print(F("Handshake error expected ["));
   Serial.print(0x55, HEX);
   Serial.print(F(" "));
   Serial.print(0x01, HEX);
@@ -2082,7 +2039,7 @@ bool send_ack(bool expect_response_ack = true)
  */
 uint8_t read_DTC_codes()
 {
-  Serial.print(F(" - Read DTC error codes on ADDR 0x"));
+  Serial.print(F("Read DTC on ADDR 0x"));
   Serial.println(addr_selected, HEX);
 
   if (!KWPSendDTCReadBlock())
@@ -2112,7 +2069,7 @@ uint8_t read_DTC_codes()
       if (s[3] == 0xFF && s[4] == 0xFF && s[5] == 0x88)
       {
         // No DTC errors found
-        Serial.println(F(" - No DTC error codes found"));
+        Serial.println(F("No DTC codes found"));
         return 2;
       }
       else
@@ -2122,7 +2079,7 @@ uint8_t read_DTC_codes()
         uint8_t dtc_error_amount = (uint8_t)((block_length - 3) / 3);
         if (dtc_error_amount < 1 || dtc_error_amount > 4)
         {
-          Serial.println(F(" - Read DTC error codes wrong amount of DTC errors calculated!"));
+          Serial.println(F("DTC wrong amount of DTC errors"));
           return false;
         }
         for (int i = 0; i < dtc_error_amount; i++)
@@ -2154,7 +2111,7 @@ uint8_t read_DTC_codes()
         dtc_errors_received_counter++;
         if (dtc_errors_received_counter > 3)
         {
-          Serial.println(F(" - Too much errors to receive. INCREASE ARRAY SIZE!"));
+          Serial.println(F("Too much errors to receive. INCREASE ARRAY SIZE!"));
           all_dtc_errors_received = true;
           continue;
         }
@@ -2168,7 +2125,7 @@ uint8_t read_DTC_codes()
     }
     else
     {
-      Serial.println(F(" - Read DTC error codes wrong block title!"));
+      Serial.println(F("DTC wrong block title"));
     }
   }
 
@@ -2193,22 +2150,20 @@ bool kwp_exit()
 {
   lcd.clear();
   lcd_print(0, 0, "Exiting...");
-  Serial.println(F("Performing manual KWP exit..."));
+  Serial.println(F("Manual KWP exit.."));
   // Perform KWP end output block
   delay(15);
   char s[64];
   sprintf(s, "\x03%c\x06\x03", block_counter);
   if (!KWPSendBlock(s, 4))
   {
-    Serial.println(F("Performing manual KWP exit... Failed. Exiting anyway."));
-
+    Serial.println(F("KWP exit failed"));
     lcd_print(0, 1, "error!");
     return false;
   }
   else
   {
-    Serial.println(F("Performing manual KWP exit... Succesful. Your ECU is very grateful for this."));
-
+    Serial.println(F("KWP exit succesful"));
     lcd_print(0, 1, "success!");
   }
   return true;
@@ -2216,8 +2171,7 @@ bool kwp_exit()
 
 bool obd_connect()
 {
-  Serial.println(F("------------------------------"));
-  Serial.println(F(" - Attempting to connect to ECU -"));
+  Serial.println(F("Attempting to connect to ECU"));
 
   block_counter = 0;
 
@@ -2240,13 +2194,13 @@ bool obd_connect()
   lcd_print(0, 1, "Init...", 16);
   obd.begin(baud_rate); // Baud rate 9600 for Golf 4/Bora or 10400 in weird cases
   display_statusbar();
-  Serial.print(F(" - KWP5BaudInit on addr 0x"));
+  Serial.print(F("KWP5BaudInit on addr 0x"));
   Serial.println(addr_selected, HEX);
 
   if (!simulation_mode_active && !KWP5BaudInit(addr_selected))
   {
     lcd_print(0, 1, "5BaudInit  ERROR");
-    Serial.println(F(" - KWP5BaudInit ERROR"));
+    Serial.println(F("KWP5BaudInit failed"));
 
     return false;
   }
@@ -2261,7 +2215,6 @@ bool obd_connect()
     lcd_print(0, 1, "Handshake error");
     display_statusbar();
     serial_print_kwp_handshake_error(response);
-
     delay(1444);
     display_statusbar();
     lcd_print(0, 1, "ECU: " + String((uint8_t)response[0], HEX) + " " + String((uint8_t)response[1], HEX) + " " + String((uint8_t)response[2], HEX), 16);
@@ -2285,14 +2238,14 @@ bool obd_connect()
   }
   display_statusbar();
   lcd_print(0, 1, "Handshake  RIGHT");
-  Serial.println(F(" - KWP5BaudInit Handshake DONE"));
-  Serial.println(F(" - KWP5BaudInit DONE"));
+  Serial.println(F("Handshake DONE"));
+  Serial.println(F("KWP5BaudInit DONE"));
 
   lcd_print(0, 1, "BaudInit   DONE");
   display_statusbar();
   lcd_print(0, 1, "Read ECU data...");
 
-  Serial.println(F(" - ReadConnectBlocks"));
+  Serial.println(F("ReadConnectBlocks"));
 
   if (!simulation_mode_active && !readConnectBlocks(true))
   {
@@ -2301,8 +2254,8 @@ bool obd_connect()
     // printError("readConnectBlocks() error");
     return false;
   }
-  Serial.println(F(" - ReadConnectBlocks DONE"));
-  Serial.println(F("!!! --> Connected to ECU! <-- !!!"));
+  Serial.println(F("ReadConnectBlocks done"));
+  Serial.println(F("Connected to ECU"));
 
   connected = true;
   display_statusbar();
@@ -2318,7 +2271,7 @@ bool connect()
   //  Get ECU Addr to connect to from user
   if (connection_attempts_counter > 0)
   {
-    Serial.print(F("This is connection attempt number "));
+    Serial.print(F("Connection attempt: "));
     Serial.println(connection_attempts_counter);
   }
 
@@ -2333,7 +2286,7 @@ bool connect()
   uint8_t userinput_ecu_address = 0; // 1 or 17
 
   lcd.clear();
-  lcd_print(0, 0, "Debug mode on?");
+  lcd_print(0, 0, "Debug mode");
   lcd_print(0, 1, "<-- Y");
   lcd_print(11, 1, "N -->");
   if (connection_attempts_counter > 0)
@@ -2372,7 +2325,7 @@ bool connect()
   delay(555);
 
   lcd.clear();
-  lcd_print(0, 0, "Select con mode:");
+  lcd_print(0, 0, "Connect mode");
   lcd_print(0, 1, "<- ECU");
   lcd_print(10, 1, "SIM ->");
   if (connection_attempts_counter > 0)
@@ -2468,7 +2421,7 @@ bool connect()
   delay(555);
 
   lcd.clear();
-  lcd_print(0, 0, "Select ECU addr:");
+  lcd_print(0, 0, "ECU address:");
   lcd_print(0, 1, "<-- 01");
   lcd_print(10, 1, "17 -->");
   while (userinput_ecu_address == 0)
@@ -2504,10 +2457,11 @@ bool connect()
 
   Serial.println(F("Saved configuration: "));
   Serial.println(F("--- DEBUG on"));
+  Serial.print(F("--- SIMULATION "));
   if (simulation_mode_active)
-    Serial.println(F("--- SIMULATION on"));
+    Serial.println(F("on"));
   else
-    Serial.println(F("--- SIMULATION off"));
+    Serial.println(F("off"));
   Serial.print(F("--- "));
   Serial.print(baud_rate);
   Serial.println(F(" baud"));
@@ -2593,7 +2547,7 @@ void loop()
       }
       break;
     default:
-      Serial.println(F("!!!!!!!!kwp_mode undefined, exiting!!!!!!!!"));
+      Serial.println(F("Kwp_mode undefined EXIT"));
 
       break;
     }
