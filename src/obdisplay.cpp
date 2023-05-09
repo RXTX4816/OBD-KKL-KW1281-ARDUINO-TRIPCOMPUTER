@@ -1102,6 +1102,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
   unsigned long timeout = millis() + timeout_to_add;
   unsigned long timeout_last = timeout;
   uint16_t temp_iteration_counter = 0;
+  uint8_t temp_0x0F_counter = 0;
   while ((recvcount == 0) || (recvcount < size))
   {
     while (obd.available())
@@ -1136,51 +1137,40 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         Serial.print(F(" data:0x"));
         Serial.println(data, HEX);
 
-        switch (recvcount)
+        if (data == 0x55)
         {
-        case 4:
-          if (data == 0xFF)
-            Serial.println(F(" - - - Expected, skipping"));
-          else
-            Serial.println(F(" - - - Unknown data sent by ECU! Aborting..."));
-          break;
-        case 5:
-          if (data == 0x0F)
-          {
-            Serial.println(F(" - - - Expected, skipping"));
-          }
-          else if (data == 0x55)
-          {
-            // Maybe ECU is trying to send sync bytes again?
-            Serial.println(F(" - - - Maybe sync bytes coming in"));
-            // Reset to beginning of init phase
-            s[0] = 0x00;
-            s[1] = 0x00;
-            s[2] = 0x00;
-            size = 3;
-            recvcount = 1;
-            s[0] = 0x55;
-            Serial.println(F(" - - - Reset KWPReceiveBlock: s={0x55,0,0}, size=3, recvcount=1"));
+          temp_0x0F_counter = 0;
+          // Maybe ECU is trying to send sync bytes again?
+          Serial.println(F(" - - - Maybe sync bytes coming in"));
+          // Reset to beginning of init phase
+          s[0] = 0x00;
+          s[1] = 0x00;
+          s[2] = 0x00;
+          size = 3;
+          recvcount = 1;
+          s[0] = 0x55;
+          Serial.println(F(" - - - Reset KWPReceiveBlock: s={0x55,0,0}, size=3, recvcount=1"));
 
-            timeout_last = timeout;
-            timeout = millis() + timeout_to_add;
-            Serial.print(F(" - KWPReceiveBlock info: Added timeout. ReceiveCount: "));
-            Serial.print((uint8_t)recvcount);
-            Serial.print(F(". Processed data: "));
-            Serial.print((uint8_t)data, HEX);
-            Serial.print(F(". ACK compl: "));
-            Serial.print(((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)));
-            Serial.print(F(". Iteration: "));
-            Serial.print(temp_iteration_counter);
-          }
-          else
-          {
-            Serial.println(F(" - - - Unknown data sent by ECU! Aborting..."));
-            return false;
-          }
-          break;
-        case 6:
-          if (data == 0x0F)
+          timeout_last = timeout;
+          timeout = millis() + timeout_to_add;
+          Serial.print(F(" - KWPReceiveBlock info: Added timeout. ReceiveCount: "));
+          Serial.print((uint8_t)recvcount);
+          Serial.print(F(". Processed data: "));
+          Serial.print((uint8_t)data, HEX);
+          Serial.print(F(". ACK compl: "));
+          Serial.print(((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)));
+          Serial.print(F(". Iteration: "));
+          Serial.print(temp_iteration_counter);
+        }
+        else if (data == 0xFF)
+        {
+          temp_0x0F_counter = 0;
+          Serial.println(F(" - - - Expected, skipping. Maybe beginning of COM ERROR"));
+          delay(50);
+        }
+        else if (data == 0x0F)
+        {
+          if (temp_0x0F_counter >= 1)
           {
             Serial.println(F(" - - - Expected, acknowledge"));
             obdWrite(data ^ 0xFF);
@@ -1194,43 +1184,15 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
             Serial.print(((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)));
             Serial.print(F(". Iteration: "));
             Serial.print(temp_iteration_counter);
+          } else {
+            temp_0x0F_counter++;
           }
-          else
-            Serial.println(F(" - - - Unknown data sent by ECU! Aborting..."));
-
-          break;
-        case 7:
-        case 8:
-          if (data == 0x55 || data == 0x01)
-            Serial.println(F(" - - - Expected, skipping"));
-          else
-            Serial.println(F(" - - - Unknown data sent by ECU! Aborting..."));
-          break;
-        case 9:
-
-          if (data == 0x8A)
-          {
-            Serial.println(F(" - - - Expected, acknowledge"));
-
-            obdWrite(data ^ 0xFF);
-
-            timeout_last = timeout;
-            timeout = millis() + timeout_to_add;
-            Serial.print(F(" - KWPReceiveBlock info: Added timeout. ReceiveCount: "));
-            Serial.print((uint8_t)recvcount);
-            Serial.print(F(". Processed data: "));
-            Serial.print((uint8_t)data, HEX);
-            Serial.print(F(". ACK compl: "));
-            Serial.print(((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)));
-            Serial.print(F(". Iteration: "));
-            Serial.print(temp_iteration_counter);
-            continue;
-          }
-          else
-            Serial.println(F(" - - - Unknown data sent by ECU! Aborting..."));
-          break;
-        default:
-          break;
+        }
+        else
+        {
+          Serial.println(F(" - - - Unknown data sent by ECU! Trying to ignore and NOT send an ACK"));
+          temp_0x0F_counter = 0;
+          delay(50);
         }
         continue;
       }
