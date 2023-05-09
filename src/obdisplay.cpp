@@ -11,8 +11,8 @@ Ignore compile warnings.
 // Arduino/Standard Libraries
 #include <Arduino.h>
 // #include <EEPROM.h>
-#include <Wire.h>
-#include <time.h>
+// #include <Wire.h>
+// #include <time.h>
 //  Third party libraries
 #include "LiquidCrystal.h"
 #include "NewSoftwareSerial.h"
@@ -45,6 +45,7 @@ const uint8_t KWP_MODE_READSENSORS = 1; // Read all sensors from the connected A
 const uint8_t KWP_MODE_READGROUP = 2;   // Read only specified group from connected ADDR
 const char CHAR_YES = 'Y';
 const char CHAR_NO = 'N';
+char STRING_ERR[] = "ERR";
 
 // Backend
 NewSoftwareSerial obd(pin_rx, pin_tx, false); // rx, tx, inverse logic = false
@@ -99,7 +100,7 @@ uint8_t k_temp[4] = {0, 0, 0, 0};
 bool k_temp_updated = false;
 float v_temp[4] = {-1, -1, -1, -1};
 bool v_temp_updated = false;
-String unit_temp[4] = {"ERR", "ERR", "ERR", "ERR"};
+String unit_temp[4] = {STRING_ERR, STRING_ERR, STRING_ERR, STRING_ERR};
 bool unit_temp_updated = false;
 void reset_temp_group_array()
 {
@@ -107,7 +108,7 @@ void reset_temp_group_array()
   {
     k_temp[i] = 0;
     v_temp[i] = 0;
-    unit_temp[i] = "ERR";
+    unit_temp[i] = STRING_ERR;
   }
 }
 // DTC error
@@ -332,6 +333,19 @@ void decrement_menu(uint8_t &menu_current, uint8_t &menu_current_max)
 //                            DISPLAY CODE
 // --------------------------------------------------------------------------------------------------
 
+void lcd_print(uint8_t x, uint8_t y, String s)
+{
+  lcd.setCursor(x, y);
+  lcd.print(s);
+}
+
+void lcd_print(uint8_t x, uint8_t y, String s, uint8_t width)
+{
+  while (s.length() < width)
+    s += " ";
+  lcd_print(x, y, s);
+}
+
 void lcd_clear(uint8_t x, uint8_t y, uint8_t width = 1)
 {
   lcd.setCursor(x, y);
@@ -341,33 +355,22 @@ void lcd_clear(uint8_t x, uint8_t y, uint8_t width = 1)
   }
 }
 
-void lcd_print(uint8_t x, uint8_t y, String s, uint8_t width = 0)
-{
-  lcd.setCursor(x, y);
-  while (s.length() < width)
-    s += " ";
-  lcd.print(s);
-}
-
-void lcd_print(uint8_t x, uint8_t y, int number, uint8_t width = 0)
+void lcd_print(uint8_t x, uint8_t y, int number)
 {
   lcd.setCursor(x, y);
   lcd.print(number);
 }
-void lcd_print(uint8_t x, uint8_t y, uint8_t number, uint8_t width = 0)
+void lcd_print(uint8_t x, uint8_t y, uint8_t number)
 {
-  lcd.setCursor(x, y);
-  lcd.print(number);
+  lcd_print(x, y, (int)number);
 }
-void lcd_print(uint8_t x, uint8_t y, uint16_t number, uint8_t width = 0)
+void lcd_print(uint8_t x, uint8_t y, uint16_t number)
 {
-  lcd.setCursor(x, y);
-  lcd.print(number);
+  lcd_print(x, y, (int)number);
 }
-void lcd_print(uint8_t x, uint8_t y, uint32_t number, uint8_t width = 0)
+void lcd_print(uint8_t x, uint8_t y, uint32_t number)
 {
-  lcd.setCursor(x, y);
-  lcd.print(number);
+  lcd_print(x, y, (int)number);
 }
 
 void lcd_print(uint8_t x, uint8_t y, float floating_number, uint8_t width = 0)
@@ -376,25 +379,25 @@ void lcd_print(uint8_t x, uint8_t y, float floating_number, uint8_t width = 0)
   lcd.print(floating_number);
 }
 
-void lcd_print(uint8_t x, uint8_t y, bool boolean, uint8_t width = 0)
+void lcd_print_bool(uint8_t x, uint8_t y, bool boolean, uint8_t width = 0)
 {
   lcd_print(x, y, convert_bool_string(boolean), width);
 }
 
 void lcd_print_cockpit(uint8_t x, uint8_t y, String s, uint8_t width, bool &updated, bool force_update = false)
 {
-  lcd_clear(x, y, width);
   if (updated || force_update)
   {
-    lcd_print(x, y, s, width);
+    lcd_clear(x, y, width);
+    lcd_print(x, y, s);
     updated = false;
   }
 }
 void lcd_print_cockpit(uint8_t x, uint8_t y, uint16_t number, uint8_t width, bool &updated, bool force_update = false)
 {
-  lcd_clear(x, y, width);
   if (updated || force_update)
   {
+    lcd_clear(x, y, width);
     uint8_t number_length = count_digit(number);
     if (number_length <= width)
     {
@@ -405,9 +408,9 @@ void lcd_print_cockpit(uint8_t x, uint8_t y, uint16_t number, uint8_t width, boo
 }
 void lcd_print_cockpit_float(uint8_t x, uint8_t y, float number, uint8_t width, bool &updated, bool force_update = false)
 {
-  lcd_clear(x, y, width);
   if (updated || force_update)
   {
+    lcd_clear(x, y, width);
     uint8_t number_length = String(number, 2).length();
     if (number_length <= width)
     {
@@ -415,6 +418,13 @@ void lcd_print_cockpit_float(uint8_t x, uint8_t y, float number, uint8_t width, 
     }
     updated = false;
   }
+}
+
+void lcd_show_screen_not_supported(uint8_t screen)
+{
+  lcd_print(0, 0, "Screen", 7);
+  lcd_print(7, 0, screen);
+  lcd_print(0, 1, "not supported!");
 }
 
 void init_statusbar()
@@ -458,9 +468,7 @@ void init_menu_cockpit()
       lcd_print(6, 1, "C temp");
       break;
     default:
-      lcd_print(0, 0, "Screen", 7);
-      lcd_print(7, 0, menu_cockpit_screen);
-      lcd_print(0, 1, "not supported!");
+      lcd_show_screen_not_supported(menu_cockpit_screen);
       break;
     }
     break;
@@ -494,9 +502,7 @@ void init_menu_cockpit()
       lcd_print(7, 1, "L/h");
       break;
     default:
-      lcd_print(0, 0, "Screen", 7);
-      lcd_print(7, 0, menu_cockpit_screen);
-      lcd_print(0, 1, "not supported!");
+      lcd_show_screen_not_supported(menu_cockpit_screen);
       break;
     }
     break;
@@ -572,9 +578,7 @@ void init_menu_settings()
     lcd_print(15, 1, ">");
     break;
   default:
-    lcd_print(0, 0, "Menu screen", 12);
-    lcd_print(12, 0, menu_settings_screen, 12);
-    lcd_print(0, 1, "not supported!");
+    lcd_show_screen_not_supported(menu_settings_screen);
     break;
   }
 }
@@ -620,9 +624,7 @@ void display_menu_cockpit(bool force_update = false)
       lcd_print_cockpit(0, 1, temperature_unknown_3, 4, temperature_unknown_3_updated, force_update);
       break;
     default:
-      lcd_print(0, 0, "Screen", 7);
-      lcd_print(7, 0, menu_cockpit_screen);
-      lcd_print(0, 1, "not supported!");
+      lcd_show_screen_not_supported(menu_cockpit_screen);
       break;
     }
     break;
@@ -704,10 +706,10 @@ void display_menu_dtc(bool force_update = false)
   case 7:
   case 8:
   case 9:
-    uint8_t dtc_pointer = menu_cockpit_screen - 2;
+    uint8_t dtc_pointer = menu_dtc_screen - 2;
     if (dtc_pointer < 0 || dtc_pointer > 7)
       return;
-    lcd_print(0, 0, dtc_pointer + 1);
+    lcd_print_cockpit(0, 0, dtc_pointer + 1, 1, dtc_errors_updated, force_update);
     lcd_print_cockpit(3, 0, dtc_errors[dtc_pointer], 6, dtc_errors_updated, force_update);
     lcd_print_cockpit(13, 0, dtc_status_bytes[dtc_pointer], 3, dtc_status_bytes_updated, force_update);
     lcd_print_cockpit(3, 1, dtc_errors[dtc_pointer + 1], 6, dtc_errors_updated, force_update);
@@ -777,12 +779,14 @@ void simulate_values_helper(uint8_t &val, uint8_t amount_to_change, bool &val_sw
   else if (!val_switch && val <= minimum)
     val_switch = true;
 }
-void simulate_values_helper(uint16_t &val, uint8_t amount_to_change, bool &val_switch, uint16_t maximum, uint16_t minimum = 0)
+void simulate_values_helper(uint16_t &val, uint8_t amount_to_change, bool &val_switch, bool &val_updated, uint16_t maximum, uint16_t minimum = 0)
 {
   if (val_switch)
     val += amount_to_change;
   else
     val -= amount_to_change;
+
+  val_updated = true;
 
   if (val_switch && val >= maximum)
     val_switch = false;
@@ -791,23 +795,27 @@ void simulate_values_helper(uint16_t &val, uint8_t amount_to_change, bool &val_s
 }
 void simulate_values()
 {
-  increase_block_counter();                                            // Simulate some values
-  simulate_values_helper(vehicle_speed, 1, vehicle_speed_switch, 200); // Vehicle speed
-  simulate_values_helper(engine_rpm, 1, engine_rpm_switch, 7100);      // Engine RPM
-  simulate_values_helper(coolant_temp, 1, coolant_temp_switch, 160);   // Coolant temperature
-  simulate_values_helper(oil_temp, 1, oil_temp_switch, 160);           // Oil Temperature
-  simulate_values_helper(oil_level_ok, 1, oil_level_ok_switch, 8);     // Oil level ok
-  simulate_values_helper(fuel_level, 1, fuel_level_switch, 57);        // Fuel
-
+  increase_block_counter();                                                                   // Simulate some values
+  simulate_values_helper(vehicle_speed, 1, vehicle_speed_switch, vehicle_speed_updated, 200); // Vehicle speed
+  simulate_values_helper(engine_rpm, 87, engine_rpm_switch, engine_rpm_updated, 7100);        // Engine RPM
+  simulate_values_helper(coolant_temp, 1, coolant_temp_switch, coolant_temp_updated, 160);    // Coolant temperature
+  simulate_values_helper(oil_temp, 1, oil_temp_switch, oil_temp_updated, 160);                // Oil Temperature
+  simulate_values_helper(oil_level_ok, 1, oil_level_ok_switch, oil_level_ok_updated, 8);      // Oil level ok
+  simulate_values_helper(fuel_level, 1, fuel_level_switch, fuel_level_updated, 57);           // Fuel
 }
 
 void compute_values()
 {
   elapsed_seconds_since_start = ((millis() - connect_time_start) / 1000);
+  elapsed_seconds_since_start_updated = true;
   elpased_km_since_start = odometer - odometer_start;
+  elpased_km_since_start_updated = true;
   fuel_burned_since_start = abs(fuel_level_start - fuel_level);
+  fuel_burned_since_start_updated = true;
   fuel_per_100km = (100 / elpased_km_since_start) * fuel_burned_since_start;
+  fuel_per_100km_updated = true;
   fuel_per_hour = (3600 / elapsed_seconds_since_start) * fuel_burned_since_start;
+  fuel_per_hour_updated = true;
 }
 
 // --------------------------------------------------------------------------------------------------
@@ -1240,9 +1248,9 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
 
       if (recvcount == 0)
       {
-        lcd_print(0, 1, "Nothing received!");
+        lcd_print(0, 1, "Nothing received!   ");
         delay(1222);
-        lcd_print(0, 1, "Check wiring!");
+        lcd_print(0, 1, "Check wiring!    ");
       }
       else
       {
@@ -2268,12 +2276,8 @@ bool obd_connect()
 
 bool connect()
 {
-  //  Get ECU Addr to connect to from user
-  if (connection_attempts_counter > 0)
-  {
-    Serial.print(F("Connection attempt: "));
-    Serial.println(connection_attempts_counter);
-  }
+  Serial.print(F("Connect attempt: "));
+  Serial.println(connection_attempts_counter);
 
   // Startup configuration // 0 = false, 1 = true, -1 = undefined for booleans as int8_t
   int8_t userinput_debug_mode = -1; // Whether to print Serial messages
@@ -2285,14 +2289,16 @@ bool connect()
   uint16_t supported_baud_rates[supported_baud_rates_size] = {1200, 2400, 4800, 9600, 10400};
   uint8_t userinput_ecu_address = 0; // 1 or 17
 
+  if (connection_attempts_counter > 0)
+  {
+    userinput_debug_mode = debug_mode_enabled;
+    userinput_simulation_mode = simulation_mode_active;
+  }
+
   lcd.clear();
   lcd_print(0, 0, "Debug mode");
   lcd_print(0, 1, "<-- Y");
   lcd_print(11, 1, "N -->");
-  if (connection_attempts_counter > 0)
-  {
-    userinput_debug_mode = debug_mode_enabled;
-  }
   while (userinput_debug_mode == -1)
   {
     int user_input = analogRead(0);
@@ -2328,10 +2334,6 @@ bool connect()
   lcd_print(0, 0, "Connect mode");
   lcd_print(0, 1, "<- ECU");
   lcd_print(10, 1, "SIM ->");
-  if (connection_attempts_counter > 0)
-  {
-    userinput_simulation_mode = simulation_mode_active;
-  }
   while (userinput_simulation_mode == -1)
   {
     int user_input = analogRead(0);
@@ -2500,7 +2502,7 @@ void setup()
 
   // Startup animation
   lcd.clear();
-  lcd_print(4, 0, "O B D");
+  lcd_print(0, 0, "O B D");
   lcd_print(1, 1, "D I S P L A Y");
 
   delay(777);
@@ -2555,7 +2557,7 @@ void loop()
   else
   {
     simulate_values();
-    delay(333);
+    delay(222);
   }
 
   if (engine_rpm > 4000)
@@ -2800,7 +2802,7 @@ void loop()
     display_menu_debug();
     break;
   case 3:
-    display_menu_dtc(true); // Fix later
+    display_menu_dtc(); // Fix later
     break;
   case 4:
     display_menu_settings();
