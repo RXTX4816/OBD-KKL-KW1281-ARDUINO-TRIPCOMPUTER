@@ -1184,6 +1184,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
             Serial.print(((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)));
             Serial.print(F(". Iteration: "));
             Serial.print(temp_iteration_counter);
+            temp_0x0F_counter = 0;
           } else {
             temp_0x0F_counter++;
           }
