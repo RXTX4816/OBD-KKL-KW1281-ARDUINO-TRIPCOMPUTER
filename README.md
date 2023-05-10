@@ -4,12 +4,23 @@ This code is for the Arduino Uno with a 16x2 Display Shield.
 
 For the Arduino Mega with a TFT LCD Display Shield look into [this repo](https://github.com/RXTX4816/OBD-KKL-KW1281-ARDUINO-TFTLCD-TRIPCOMPUTER)
 
-![](assets/obdisplay.gif)
+![](assets/obdisplay.mp4)
 
 ## Welcome
 Simple trip computer for the Arduino Uno with a 16x2 Screen to display useful information in all VAG vehicles with the MARELLI 4LV ECU (VAG Number: 036906034AM). This includes most Golf mk4/Jetta/Bora from the years around 2000 that are limited to the K-Line communication and the KW1281 protocol. Newer cars since around 2005 began to adapt OBD-2 with CAN communication, that can be accessed through a ELM327 controller. No such simple controller exists currently for KKL.
 
 This repo contains all necessary files. The only file containing code is [obdisplay.cpp](src/obdisplay.cpp). 
+
+## Features
+- Supported baud rates 1200, 2400, 4800, 9600, 10400
+- Supports KWP1281 K-Line through NewSoftwareSerial
+- Read sensor data
+- Read, view and delete DTC Errors
+- Supported ECU addr 0x01(engine) and 0x17(dashboard)
+- Automatic communication error handling
+- Simulation mode to test the display
+- KWP1281 exit procedure
+- 3 modes: Acknowledge, Group reading, Sensors reading
 
 ## Setup Instructions
 Requirements: Arduino Uno, 16x2 Liquidcrystal Display Shield, Autodia K409 KKL OBD to USB cable
@@ -90,6 +101,11 @@ Thanks to many wonderful projects for making this project less painful than it a
 [mkirbst's existing code](https://github.com/mkirbst/lupo-gti-tripcomputer-kw1281) helped a lot to get the  mainframe going. His code did not work on my car, although he has a very similar one to mine using the same protocol. He refers to some connection problems, which I also got that can only be caused by the software. This project eliminates connection problems by implementing a procedure for error messages by the ECU. 
 
 ## Caution
+
+
+------------------------------------------------------------
+#### Use this at your own risk. Be cautious. Damaging your car or your cars ECU is possible. Wrong wiring and setup can create a fire hazard. In rare cases the airbags can deploy when reading DTC errors on 0x15. The OBD was meant to be a diagnostics port only, by using a tripcomputer through it the workload on the ECU increases.  
+------------------------------------------
 This is an early version and I'm only releasing it to help on anyones journey with this VAG mess. You need to manually remove connections and solder cables on an OBD to USB board and hook them up to the Arduino Uno TX and RX pins. You need to turn ignition ON for the ECU to start. This software should not break anything in the ECU, since only the measure groups are accessed. Depending on your car, you may need to adapt this code for various values. 
 
 Be careful when working with the Airbag Address 0x15 since in some rare circumstances when an electrical failure is given in the airbag system and DTC error codes are deleted the airbag can deploy on affected ECU's. I would hardly advise not to touch the Airbag controller with selfmade code.
@@ -104,8 +120,6 @@ Contributions are welcomed.
 
 ## Future
 Will add sometime in the future:
-- DTC Error reading and DTC Error deletion.
 - LEDs + Sound on critical warnings (Oil pressure, temperature too high, DTC errors)
-- Correct disconnect procedure. Currently there is none, the microcontroller just stops sending and waits for >1100ms for the ECU to refresh. 
 
 

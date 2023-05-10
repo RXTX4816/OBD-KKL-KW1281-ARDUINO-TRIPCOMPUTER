@@ -885,7 +885,8 @@ void disconnect()
   obd.end();
   reset_variables();
   delay(2222);
-  //  TODO communication end procedure
+  lcd_print(0, 1, "Disconnected", 16);
+  delay(1222);
 }
 
 /**
