@@ -249,7 +249,7 @@ void reset_variables()
 #define debughexln(in)
 #define debugstrnum(str, num)
 #define debugstrnumln(str, num)
-#define debugstrnumhexln(str, num) 
+#define debugstrnumhexln(str, num)
 #endif
 
 /* Display */
@@ -1081,43 +1081,51 @@ bool KWPSendBlock(char *s, int size)
  */
 bool KWPSendAckBlock()
 {
-  debug(F("---KWPSendAckBlock block counter = "));
-  debugln(block_counter);
+  debugstrnumln(F("---KWPSendAckBlock block counter = "), block_counter);
   char buf[32];
-  sprintf(buf, "\x03%c\x09\x03", block_counter);
+  buf[0] = 0x03;
+  buf[1] = block_counter;
+  buf[2] = 0x09;
+  buf[3] = 0x03;
   if (!KWPSendBlock(buf, 4))
     return false;
   return true;
 }
 
+/**
+ * Sends DTC read block and obtains all DTC errors
+ */
 bool KWPSendDTCReadBlock()
 {
-  debug(F("---KWPSendDTCReadBlock block counter = "));
-  debugln(block_counter);
+  debugstrnumln(F("---KWPSendDTCReadBlock block counter = "), block_counter);
 
   char s[32];
-  sprintf(s, "\x03%c\x07\x03", block_counter);
+  s[0] = 0x03;
+  s[1] = block_counter;
+  s[2] = 0x07;
+  s[3] = 0x03;
   if (!KWPSendBlock(s, 4))
     return false;
   return true;
 }
 
+/**
+ * Sends DTC delete block to clear all DTC errors
+ */
 bool KWPSendDTCDeleteBlock()
 {
-  debug(F("---KWPSendDTCDeleteBlock block counter = "));
-  debugln(block_counter);
+  debugstrnumln(F("---KWPSendDTCDeleteBlock block counter = "), block_counter);
 
   char s[32];
-  sprintf(s, "\x03%c\x05\x03", block_counter);
+  s[0] = 0x03;
+  s[1] = block_counter;
+  s[2] = 0x05;
+  s[3] = 0x03;
   if (!KWPSendBlock(s, 4))
     return false;
   return true;
 }
 
-// count: if zero given, first received byte contains block length
-// 4800, 9600 oder 10400 Baud, 8N1
-// source:
-// -1 = default | 1 = readsensors
 /**
  * @brief Recieve a response from the ECU
  *
@@ -1222,17 +1230,15 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
             lcd_print(0, 1, "Exp:" + String(data) + " Is:" + String(block_counter) + "         ");
             delay(3333);
           }
-          debug(F(" - KWPReceiveBlock error: Invalid block counter. Expected: "));
-          Serial.print((uint8_t)data);
-          debug(F(". Is: "));
-          debugln((uint8_t)block_counter);
+          debugstrnum(F(" - KWPReceiveBlock error: Invalid block counter. Expected: "), (uint8_t)data);
+          debugstrnumln(F(" Is: "), (uint8_t)block_counter);
           return false;
         }
       }
       if (((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)))
       {
         obdWrite(data ^ 0xFF); // send complement ack
-        // delay(25);
+        delay(25);
         // uint8_t echo = obdRead();
         // if (echo != (data ^ 0xFF))
         //{
@@ -1248,12 +1254,10 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
       }
       timeout = millis() + timeout_to_add;
 
-      debug(F(" - KWPReceiveBlock: Added timeout. ReceiveCount: "));
-      debug((uint8_t)recvcount);
+      debugstrnum(F(" - KWPReceiveBlock: Added timeout. ReceiveCount: "), (uint8_t)recvcount);
       debug(F(". Processed data: "));
-      debughex((uint8_t)data);
-      debug(F(". ACK compl: "));
-      debugln(((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)));
+      debughex(data);
+      debugstrnumln(F(". ACK compl: "), ((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)));
     }
 
     if (millis() >= timeout)
@@ -1400,8 +1404,6 @@ bool readConnectBlocks(bool initialization_phase = false)
  */
 bool readSensors(int group)
 {
-  debug(F(" - ReadSensors group "));
-  debugln(group);
 
   for (int i = 0; i <= 3; i++)
   {
@@ -1411,7 +1413,11 @@ bool readSensors(int group)
   }
 
   char s[64];
-  sprintf(s, "\x04%c\x29%c\x03", block_counter, group);
+  s[0] = 0x04;
+  s[1] = block_counter;
+  s[2] = 0x29;
+  s[3] = group;
+  s[4] = 0x03;
   if (!KWPSendBlock(s, 5))
     return false;
   int size = 0;
@@ -1449,8 +1455,7 @@ bool readSensors(int group)
     return false;
   }
   int count = (size - 4) / 3;
-  debug(F("count="));
-  debugln(count);
+  debugstrnumln(F("count="), count);
   for (int idx = 0; idx < count; idx++)
   {
     byte k = s[3 + idx * 3];
@@ -2182,6 +2187,9 @@ bool delete_DTC_codes()
   return true;
 }
 
+/**
+ * KW1281 exit procedure
+ */
 bool kwp_exit()
 {
   lcd.clear();
@@ -2190,7 +2198,10 @@ bool kwp_exit()
   // Perform KWP end output block
   delay(15);
   char s[64];
-  sprintf(s, "\x03%c\x06\x03", block_counter);
+  s[0] = 0x03;
+  s[1] = block_counter;
+  s[2] = 0x06;
+  s[3] = 0x03;
   if (!KWPSendBlock(s, 4))
   {
     debugln(F("KWP exit failed"));
@@ -2217,8 +2228,7 @@ bool obd_connect()
   while (true)
   {
     display_statusbar();
-    int user_input = analogRead(0);
-    if (user_input >= 600 && user_input < 800)
+    if (BUTTON_SELECT(analogRead(0)))
       break;
   }
 
@@ -2378,6 +2388,8 @@ bool connect()
     disconnect();
     return false;
   }
+  if (simulation_mode_active)
+    connected = true;
   connect_time_start = millis();
   menu_switch = true;
   return true;
