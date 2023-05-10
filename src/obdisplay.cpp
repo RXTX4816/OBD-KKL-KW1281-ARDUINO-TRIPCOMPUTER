@@ -1069,6 +1069,12 @@ bool KWPSendBlock(char *s, int size)
       {
         debugln(F("ERROR: invalid complement"));
         lcd_print(0, 1, "ERR: INV COMPL");
+        delay(1333);
+        lcd_print(0, 1, "MCU:", 16);
+        lcd_print(5, 1, String(data, HEX));
+        lcd_print(8, 1, "ECU:");
+        lcd_print(13, 1, String(complement, HEX));
+        delay(2000);
         return false;
       }
     }
