@@ -10,9 +10,6 @@ Ignore compile warnings.
 
 // Arduino/Standard Libraries
 #include <Arduino.h>
-// #include <EEPROM.h>
-// #include <Wire.h>
-// #include <time.h>
 //  Third party libraries
 #include "LiquidCrystal.h"
 #include "NewSoftwareSerial.h"
@@ -20,9 +17,6 @@ Ignore compile warnings.
 /* --------------------------EDIT THE FOLLOWING TO YOUR LIKING-------------------------------------- */
 
 /* Config */
-// bool no_input_mode = false; // If you have no buttons connected, mainly used for fast testing
-// bool auto_setup = false;
-// bool compute_stats = false; // Whether statistic values should be computed (Fuel/100km etc.) Remember division is expensive on these processors.
 #define DEBUG 1                  // 1 = enable Serial.print
 #define ECU_TIMEOUT 1300         // Most commonly is 1100ms
 #define DISPLAY_FRAME_LENGTH 333 // Length of 1 frame in ms
@@ -253,6 +247,9 @@ void reset_variables()
 #define debughex(in)
 #define debugln(in)
 #define debughexln(in)
+#define debugstrnum(str, num)
+#define debugstrnumln(str, num)
+#define debugstrnumhexln(str, num) 
 #endif
 
 /* Display */
@@ -783,15 +780,6 @@ void display_menu_settings(bool force_update = false)
       }
       kwp_mode_last = kwp_mode;
     }
-  case 2:
-  case 3:
-  case 4:
-  case 5:
-  case 6:
-  case 7:
-  case 8:
-  case 9:
-  case 10:
   default:
     break;
   }
@@ -915,7 +903,7 @@ int available()
  */
 void obdWrite(uint8_t data)
 {
-  debug(F("-MCU: "));
+  debug(F("->MCU: "));
   debughexln(data);
 
   uint8_t to_delay = 5;
