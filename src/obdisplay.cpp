@@ -23,8 +23,19 @@ Ignore compile warnings.
 // bool no_input_mode = false; // If you have no buttons connected, mainly used for fast testing
 // bool auto_setup = false;
 // bool compute_stats = false; // Whether statistic values should be computed (Fuel/100km etc.) Remember division is expensive on these processors.
-bool simulation_mode_active = false;
-bool debug_mode_enabled = false;
+#define DEBUG 1                  // 1 = enable Serial.print
+#define ECU_TIMEOUT 1300         // Most commonly is 1100ms
+#define DISPLAY_FRAME_LENGTH 333 // Length of 1 frame in ms
+#define DISPLAY_MAX_X 16
+#define DISPLAY_MAX_Y 2
+#define PIN_RX 3 // Receive
+#define PIN_TX 2 // Transmit
+uint8_t simulation_mode_active = false;
+#define BUTTON_RIGHT(in) (in < 60)
+#define BUTTON_UP(in) (in >= 60 && in < 200)
+#define BUTTON_DOWN(in) (in >= 200 && in < 400)
+#define BUTTON_LEFT(in) (in >= 400 && in < 600)
+#define BUTTON_SELECT(in) (in >= 600 && in < 800)
 
 /* ECU Addresses. See info.txt in root directory for details on the values of each group. */
 const uint8_t ADDR_ENGINE = 0x01;
@@ -32,10 +43,6 @@ const uint8_t ADDR_ABS_BRAKES = 0x03;
 const uint8_t ADDR_AUTO_HVAC = 0x08;
 const uint8_t ADDR_INSTRUMENTS = 0x17;
 const uint8_t ADDR_CENTRAL_CONV = 0x46;
-
-/* Pins */
-uint8_t pin_rx = 3; // Receive
-uint8_t pin_tx = 2; // Transmit
 
 /* --------------------------EDIT BELOW ONLY TO FIX STUFF-------------------------------------- */
 
@@ -48,7 +55,7 @@ const char CHAR_NO = 'N';
 char STRING_ERR[] = "ERR";
 
 // Backend
-NewSoftwareSerial obd(pin_rx, pin_tx, false); // rx, tx, inverse logic = false
+NewSoftwareSerial obd(PIN_RX, PIN_TX, false); // rx, tx, inverse logic = false
 uint32_t connect_time_start = millis();
 uint16_t timeout_to_add = 1100; // Wikipedia
 uint16_t button_timeout = 222;
@@ -217,8 +224,40 @@ void reset_variables()
   menu_current = 0;
 }
 
+// Serial debug
+#if DEBUG == 1 // Compile Serial
+#define debug(in) Serial.print(in)
+#define debughex(in) Serial.print(in, HEX)
+#define debugln(in) Serial.println(in)
+#define debughexln(in) Serial.println(in, HEX)
+#define debugstrnum(str, num) \
+  do                          \
+  {                           \
+    debug(str);               \
+    debug(num);               \
+  } while (0)
+#define debugstrnumln(str, num) \
+  do                            \
+  {                             \
+    debug(str);                 \
+    debugln(num);               \
+  } while (0)
+#define debugstrnumhexln(str, num) \
+  do                               \
+  {                                \
+    debug(str);                    \
+    debughexln(num);               \
+  } while (0)
+#else // Do not compile serial to save space
+#define debug(in)
+#define debughex(in)
+#define debugln(in)
+#define debughexln(in)
+#endif
+
 /* Display */
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7); // 16x2 display
+uint32_t display_frame_timestamp = millis();
 
 uint8_t count_digit(int n)
 {
@@ -395,7 +434,7 @@ void lcd_print_cockpit(uint8_t x, uint8_t y, String s, uint8_t width, bool &upda
 }
 void lcd_print_cockpit(uint8_t x, uint8_t y, uint16_t number, uint8_t width, bool &updated, bool force_update = false)
 {
-  if (updated || force_update)
+  if ((updated || force_update))
   {
     lcd_clear(x, y, width);
     uint8_t number_length = count_digit(number);
@@ -408,7 +447,7 @@ void lcd_print_cockpit(uint8_t x, uint8_t y, uint16_t number, uint8_t width, boo
 }
 void lcd_print_cockpit_float(uint8_t x, uint8_t y, float number, uint8_t width, bool &updated, bool force_update = false)
 {
-  if (updated || force_update)
+  if ((updated || force_update))
   {
     lcd_clear(x, y, width);
     uint8_t number_length = String(number, 2).length();
@@ -715,9 +754,6 @@ void display_menu_dtc(bool force_update = false)
     lcd_print_cockpit(3, 1, dtc_errors[dtc_pointer + 1], 6, dtc_errors_updated, force_update);
     lcd_print_cockpit(13, 1, dtc_status_bytes[dtc_pointer + 1], 3, dtc_status_bytes_updated, force_update);
     break;
-  default:
-
-    break;
   }
 }
 void display_menu_settings(bool force_update = false)
@@ -767,12 +803,14 @@ bool coolant_temp_switch = true;
 bool oil_temp_switch = true;
 bool oil_level_ok_switch = true;
 bool fuel_level_switch = true;
-void simulate_values_helper(uint8_t &val, uint8_t amount_to_change, bool &val_switch, uint8_t maximum, uint8_t minimum = 0)
+void simulate_values_helper(uint8_t &val, uint8_t amount_to_change, bool &val_switch, bool &val_updated, uint8_t maximum, uint8_t minimum = 0)
 {
   if (val_switch)
     val += amount_to_change;
   else
     val -= amount_to_change;
+
+  val_updated = true;
 
   if (val_switch && val >= maximum)
     val_switch = false;
@@ -803,7 +841,6 @@ void simulate_values()
   simulate_values_helper(oil_level_ok, 1, oil_level_ok_switch, oil_level_ok_updated, 8);      // Oil level ok
   simulate_values_helper(fuel_level, 1, fuel_level_switch, fuel_level_updated, 57);           // Fuel
 }
-
 void compute_values()
 {
   elapsed_seconds_since_start = ((millis() - connect_time_start) / 1000);
@@ -824,29 +861,29 @@ void compute_values()
 
 void serial_print_kwp_handshake_error(char response[3])
 {
-  Serial.print(F("Handshake error expected ["));
-  Serial.print(0x55, HEX);
-  Serial.print(F(" "));
-  Serial.print(0x01, HEX);
-  Serial.print(F(" "));
-  Serial.print(0x8A, HEX);
-  Serial.print(F("] got ["));
-  Serial.print((uint8_t)response[0], HEX);
-  Serial.print(F(" "));
-  Serial.print((uint8_t)response[1], HEX);
-  Serial.print(F(" "));
-  Serial.print((uint8_t)response[2], HEX);
-  Serial.println(F("]"));
+  debug(F("Handshake error expected ["));
+  debughex(0x55);
+  debug(F(" "));
+  debughex(0x01);
+  debug(F(" "));
+  debughex(0x8A);
+  debug(F("] got ["));
+  debughex((uint8_t)response[0]);
+  debug(F(" "));
+  debughex((uint8_t)response[1]);
+  debug(F(" "));
+  debughex((uint8_t)response[2]);
+  debugln(F("]"));
 }
 
 void serial_print_disconnected()
 {
-  Serial.print(F("Disconnected. Block counter: "));
-  Serial.print(block_counter);
-  Serial.print(F(". Connected: "));
-  Serial.print(connected);
-  Serial.print(F(". Available: "));
-  Serial.println(obd.available());
+  debug(F("Disconnected. Block counter: "));
+  debug(block_counter);
+  debug(F(". Connected: "));
+  debug(connected);
+  debug(F(". Available: "));
+  debugln(obd.available());
 }
 
 // --------------------------------------------------------------------------------------------------
@@ -878,21 +915,27 @@ int available()
  */
 void obdWrite(uint8_t data)
 {
-  Serial.print(F("-MCU: "));
-  Serial.println(data, HEX);
+  debug(F("-MCU: "));
+  debughexln(data);
 
-  if (baud_rate >= 10400)
-    delay(5);
-  else if (baud_rate >= 9600)
-    delay(10);
-  else if (baud_rate >= 4800)
-    delay(15);
-  else if (baud_rate >= 2400)
-    delay(20);
-  else if (baud_rate >= 1200)
-    delay(25);
-  else
-    delay(30);
+  uint8_t to_delay = 5;
+  switch (baud_rate)
+  {
+  case 1200:
+    to_delay = 130;
+    break;
+  case 2400:
+    to_delay = 60;
+    break;
+  case 4800:
+    to_delay = 30;
+    break;
+  case 9600:
+    to_delay = 10;
+    break;
+  }
+
+  delay(to_delay);
   obd.write(data);
 }
 
@@ -908,13 +951,13 @@ uint8_t obdRead()
   {
     if (millis() >= timeout)
     {
-      Serial.println(F("ERROR: obdRead() timeout obd.available() = 0."));
+      debugln(F("ERROR: obdRead() timeout obd.available() = 0."));
       return -1;
     }
   }
   uint8_t data = obd.read();
-  Serial.print("ECU: ");
-  Serial.println(data, HEX);
+  debug(F("ECU: "));
+  debughexln(data);
 
   return data;
 }
@@ -946,17 +989,7 @@ void send5baud(uint8_t data)
       even = even ^ bit;
     }
 
-    Serial.print(F("bit"));
-    Serial.print(i);
-    Serial.print(F("="));
-    Serial.print(bit);
-    if (i == 0)
-      Serial.print(F(" startbit"));
-    else if (i == 8)
-      Serial.print(F(" parity"));
-    else if (i == 9)
-      Serial.print(F(" stopbit"));
-    Serial.println();
+    debugstrnum(F(" "), bit);
 
     bits[i] = bit;
   }
@@ -973,12 +1006,12 @@ void send5baud(uint8_t data)
     if (bits[i] == 1)
     {
       // high
-      digitalWrite(pin_tx, HIGH);
+      digitalWrite(PIN_TX, HIGH);
     }
     else
     {
       // low
-      digitalWrite(pin_tx, LOW);
+      digitalWrite(PIN_TX, LOW);
     }
   }
   obd.flush();
@@ -989,9 +1022,9 @@ void send5baud(uint8_t data)
  */
 bool KWP5BaudInit(uint8_t addr)
 {
-  Serial.println(F("<-----5baud----->"));
+  debug(F("5 baud: (0)"));
   send5baud(addr);
-  Serial.println(F("</----5baud----->"));
+  debugln(F(" (9) END"));
   return true;
 }
 
@@ -1005,18 +1038,18 @@ bool KWP5BaudInit(uint8_t addr)
  */
 bool KWPSendBlock(char *s, int size)
 {
-  Serial.print(F("---KWPSend size = "));
-  Serial.print(size);
-  Serial.print(F(" block counter = "));
-  Serial.println(block_counter);
-  Serial.print(F("To send: "));
+  debug(F("---KWPSend size = "));
+  debug(size);
+  debug(F(" block counter = "));
+  debugln(block_counter);
+  debug(F("To send: "));
   for (uint8_t i = 0; i < size; i++)
   {
     uint8_t data = s[i];
-    Serial.print(data, HEX);
-    Serial.print(" ");
+    debughex(data);
+    debug(" ");
   }
-  Serial.println();
+  debugln();
 
   for (uint8_t i = 0; i < size; i++)
   {
@@ -1024,7 +1057,7 @@ bool KWPSendBlock(char *s, int size)
     obdWrite(data);
     /*uint8_t echo = obdRead(); ???
     if (data != echo){
-      Serial.println(F("ERROR: invalid echo"));
+      debugln(F("ERROR: invalid echo"));
       disconnect();
       errorData++;
       return false;
@@ -1034,7 +1067,7 @@ bool KWPSendBlock(char *s, int size)
       uint8_t complement = obdRead();
       if (complement != (data ^ 0xFF))
       {
-        Serial.println(F("ERROR: invalid complement"));
+        debugln(F("ERROR: invalid complement"));
         lcd_print(0, 1, "ERR: INV COMPL");
         return false;
       }
@@ -1053,8 +1086,8 @@ bool KWPSendBlock(char *s, int size)
  */
 bool KWPSendAckBlock()
 {
-  Serial.print(F("---KWPSendAckBlock block counter = "));
-  Serial.println(block_counter);
+  debug(F("---KWPSendAckBlock block counter = "));
+  debugln(block_counter);
   char buf[32];
   sprintf(buf, "\x03%c\x09\x03", block_counter);
   if (!KWPSendBlock(buf, 4))
@@ -1064,8 +1097,8 @@ bool KWPSendAckBlock()
 
 bool KWPSendDTCReadBlock()
 {
-  Serial.print(F("---KWPSendDTCReadBlock block counter = "));
-  Serial.println(block_counter);
+  debug(F("---KWPSendDTCReadBlock block counter = "));
+  debugln(block_counter);
 
   char s[32];
   sprintf(s, "\x03%c\x07\x03", block_counter);
@@ -1076,8 +1109,8 @@ bool KWPSendDTCReadBlock()
 
 bool KWPSendDTCDeleteBlock()
 {
-  Serial.print(F("---KWPSendDTCDeleteBlock block counter = "));
-  Serial.println(block_counter);
+  debug(F("---KWPSendDTCDeleteBlock block counter = "));
+  debugln(block_counter);
 
   char s[32];
   sprintf(s, "\x03%c\x05\x03", block_counter);
@@ -1108,18 +1141,12 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
   if (size == 0)
     ackeachbyte = true;
 
-  Serial.print(F(" - KWPReceiveBlock. Size: "));
-  Serial.print(size);
-  Serial.print(F(". Block counter: "));
-  Serial.print(block_counter);
-  Serial.print(F(". Init phase: "));
-  Serial.print(initialization_phase);
-  Serial.print(F(". Timeout duration: "));
-  Serial.println(timeout_to_add);
+  debugstrnum(F(" - KWPReceiveBlock. Size: "), size);
+  debugstrnum(F(". Block counter: "), block_counter);
 
   if (size > maxsize)
   {
-    Serial.println(F(" - KWPReceiveBlock error: Invalid maxsize"));
+    debugln(F(" - KWPReceiveBlock error: Invalid maxsize"));
     lcd_print(0, 1, "ERR:size>maxsize");
     delay(2000);
     return false;
@@ -1132,15 +1159,15 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
     {
       if (temp_iteration_counter == recvcount)
       {
-        Serial.print(F("      Iter: "));
-        Serial.print(temp_iteration_counter);
-        Serial.print(F(" receivecount: "));
-        Serial.println(recvcount);
+        debug(F("      Iter: "));
+        debug(temp_iteration_counter);
+        debug(F(" receivecount: "));
+        debugln(recvcount);
       }
       data = obdRead();
       if (data == -1)
       {
-        Serial.println(F(" - KWPReceiveBlock error: (Available=0) or empty buffer!"));
+        debugln(F(" - KWPReceiveBlock error: (Available=0) or empty buffer!"));
         lcd_print(0, 1, "ERROR data = -1 ");
         delay(1700);
         return false;
@@ -1152,7 +1179,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         if (source == 1 && (data != 15 || data != 3) && obd.available())
         {
           lcd_print(0, 1, "WARN block length");
-          Serial.println(F(" - KWPReceiveBlock warn: Communication error occured, check block length!"));
+          debugln(F(" - KWPReceiveBlock warn: Communication error occured, check block length!"));
           com_error = true;
           size = 6;
         }
@@ -1163,7 +1190,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         if (size > maxsize)
         {
 
-          Serial.println(F(" - KWPReceiveBlock error: Invalid maxsize"));
+          debugln(F(" - KWPReceiveBlock error: Invalid maxsize"));
           lcd_print(0, 1, "ERR:size>maxsize");
           delay(2000);
           return false;
@@ -1200,10 +1227,10 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
             lcd_print(0, 1, "Exp:" + String(data) + " Is:" + String(block_counter) + "         ");
             delay(3333);
           }
-          Serial.print(F(" - KWPReceiveBlock error: Invalid block counter. Expected: "));
+          debug(F(" - KWPReceiveBlock error: Invalid block counter. Expected: "));
           Serial.print((uint8_t)data);
-          Serial.print(F(". Is: "));
-          Serial.println((uint8_t)block_counter);
+          debug(F(". Is: "));
+          debugln((uint8_t)block_counter);
           return false;
         }
       }
@@ -1216,8 +1243,8 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         //{
         //   if (debug_mode_enabled)
         //   {
-        //     Serial.print(F("ERROR: invalid echo "));
-        //     Serial.println(echo, HEX);
+        //     debug(F("ERROR: invalid echo "));
+        //     debughexln(echo);
         //   }
         //  errorData++;
         //  If ECHO is wrong just keep going
@@ -1226,24 +1253,24 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
       }
       timeout = millis() + timeout_to_add;
 
-      Serial.print(F(" - KWPReceiveBlock: Added timeout. ReceiveCount: "));
-      Serial.print((uint8_t)recvcount);
-      Serial.print(F(". Processed data: "));
-      Serial.print((uint8_t)data, HEX);
-      Serial.print(F(". ACK compl: "));
-      Serial.println(((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)));
+      debug(F(" - KWPReceiveBlock: Added timeout. ReceiveCount: "));
+      debug((uint8_t)recvcount);
+      debug(F(". Processed data: "));
+      debughex((uint8_t)data);
+      debug(F(". ACK compl: "));
+      debugln(((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)));
     }
 
     if (millis() >= timeout)
     {
-      Serial.print(F(" - KWPReceiveBlock: Timeout overstepped on iteration "));
-      Serial.print(temp_iteration_counter);
-      Serial.print(F(" with receivecount "));
-      Serial.println(recvcount);
+      debug(F(" - KWPReceiveBlock: Timeout overstepped on iteration "));
+      debug(temp_iteration_counter);
+      debug(F(" with receivecount "));
+      debugln(recvcount);
 
       if (recvcount == 0)
       {
-        Serial.println(F("No connection to ECU! Check wiring."));
+        debugln(F("No connection to ECU! Check wiring."));
       }
 
       if (recvcount == 0)
@@ -1263,16 +1290,16 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
     temp_iteration_counter++;
   }
   // show data
-  Serial.print(F("IN: size = "));
-  Serial.print(size);
-  Serial.print(F(" data = "));
+  debug(F("IN: size = "));
+  debug(size);
+  debug(F(" data = "));
   for (uint8_t i = 0; i < size; i++)
   {
     uint8_t data = s[i];
-    Serial.print(data, HEX);
-    Serial.print(F(" "));
+    debughex(data);
+    debug(F(" "));
   }
-  Serial.println();
+  debugln();
 
   increase_block_counter();
   return true;
@@ -1282,7 +1309,10 @@ bool KWPErrorBlock()
 {
   // Kommunikationsfehler
   char s[64];
-  sprintf(s, "\x03%c\x00\x03", block_counter);
+  s[0] = 0x03;
+  s[1] = block_counter;
+  s[2] = 0x00;
+  s[3] = 0x03;
   if (!KWPSendBlock(s, 4))
   {
     com_error = false;
@@ -1309,15 +1339,15 @@ bool KWPReceiveAckBlock()
   }
   if (buf[0] != 0x03 || buf[2] != 0x09 || buf[3] != 0x03)
   {
-    Serial.print(F(" - Error receiving ACK procedure got s[0]-s[3]: "));
-    Serial.print(buf[0], HEX);
-    Serial.print(F(" "));
-    Serial.print(buf[1], HEX);
-    Serial.print(F(" "));
-    Serial.print(buf[2], HEX);
-    Serial.print(F(" "));
-    Serial.print(buf[3], HEX);
-    Serial.println(F(" should be 03 BC 09 03"));
+    debug(F(" - Error receiving ACK procedure got s[0]-s[3]: "));
+    debughex(buf[0]);
+    debug(F(" "));
+    debughex(buf[1]);
+    debug(F(" "));
+    debughex(buf[2]);
+    debug(F(" "));
+    debughex(buf[3]);
+    debugln(F(" should be 03 BC 09 03"));
     return false;
   }
   if (com_error)
@@ -1325,6 +1355,7 @@ bool KWPReceiveAckBlock()
     KWPErrorBlock();
     return false;
   }
+  return true;
 }
 
 /**
@@ -1335,7 +1366,7 @@ bool KWPReceiveAckBlock()
  */
 bool readConnectBlocks(bool initialization_phase = false)
 {
-  Serial.println(F(" - Readconnectblocks"));
+  debugln(F(" - Readconnectblocks"));
 
   String info;
   while (true)
@@ -1350,7 +1381,7 @@ bool readConnectBlocks(bool initialization_phase = false)
       break;
     if (s[2] != '\xF6')
     {
-      Serial.println(F(" - Readconnectblocks ERROR: unexpected answer"));
+      debugln(F(" - Readconnectblocks ERROR: unexpected answer"));
 
       lcd_print(0, 1, "ERR: s[2]!=xF6");
       delay(2000);
@@ -1361,8 +1392,7 @@ bool readConnectBlocks(bool initialization_phase = false)
     if (!KWPSendAckBlock())
       return false;
   }
-  Serial.print(F("label = "));
-  Serial.println(info);
+  debugstrnum(F("label = "), info);
   return true;
 }
 
@@ -1375,8 +1405,8 @@ bool readConnectBlocks(bool initialization_phase = false)
  */
 bool readSensors(int group)
 {
-  Serial.print(F(" - ReadSensors group "));
-  Serial.println(group);
+  debug(F(" - ReadSensors group "));
+  debugln(group);
 
   for (int i = 0; i <= 3; i++)
   {
@@ -1398,7 +1428,10 @@ bool readSensors(int group)
   {
     // Kommunikationsfehler
     char s[64];
-    sprintf(s, "\x03%c\x00\x03", block_counter);
+    s[0] = 0x03;
+    s[1] = block_counter;
+    s[2] = 0x00;
+    s[3] = 0x03;
     if (!KWPSendBlock(s, 4))
     {
       com_error = false;
@@ -1414,15 +1447,15 @@ bool readSensors(int group)
   }
   if (s[2] != '\xe7')
   {
-    Serial.println(F("ERROR: invalid answer"));
+    debugln(F("ERROR: invalid answer"));
     lcd_print(0, 1, "ERR: s[2]!=xE7");
     delay(2000);
     // errorData++;
     return false;
   }
   int count = (size - 4) / 3;
-  Serial.print(F("count="));
-  Serial.println(count);
+  debug(F("count="));
+  debugln(count);
   for (int idx = 0; idx < count; idx++)
   {
     byte k = s[3 + idx * 3];
@@ -1431,13 +1464,13 @@ bool readSensors(int group)
     String n;
     float v = 0;
 
-    Serial.print(F("type="));
-    Serial.print(k);
-    Serial.print(F("  a="));
-    Serial.print(a);
-    Serial.print(F("  b="));
-    Serial.print(b);
-    Serial.print(F("  text="));
+    debug(F("type="));
+    debug(k);
+    debug(F("  a="));
+    debug(a);
+    debug(F("  b="));
+    debug(b);
+    debug(F("  text="));
 
     String t = "";
     String units = "";
@@ -2013,7 +2046,7 @@ bool readSensors(int group)
       dtostrf(v, 4, 2, buf);
       t = String(buf) + " " + units;
     }
-//    Serial.println(t);
+//    debugln(t);
 
     //lcd.setCursor(0, idx);
     //while (t.length() < 20) t += " ";
@@ -2047,8 +2080,8 @@ bool send_ack(bool expect_response_ack = true)
  */
 uint8_t read_DTC_codes()
 {
-  Serial.print(F("Read DTC on ADDR 0x"));
-  Serial.println(addr_selected, HEX);
+  debug(F("Read DTC on ADDR 0x"));
+  debughexln(addr_selected);
 
   if (!KWPSendDTCReadBlock())
     return false;
@@ -2077,7 +2110,7 @@ uint8_t read_DTC_codes()
       if (s[3] == 0xFF && s[4] == 0xFF && s[5] == 0x88)
       {
         // No DTC errors found
-        Serial.println(F("No DTC codes found"));
+        debugln(F("No DTC codes found"));
         return 2;
       }
       else
@@ -2087,7 +2120,7 @@ uint8_t read_DTC_codes()
         uint8_t dtc_error_amount = (uint8_t)((block_length - 3) / 3);
         if (dtc_error_amount < 1 || dtc_error_amount > 4)
         {
-          Serial.println(F("DTC wrong amount of DTC errors"));
+          debugln(F("DTC wrong amount of DTC errors"));
           return false;
         }
         for (int i = 0; i < dtc_error_amount; i++)
@@ -2098,28 +2131,28 @@ uint8_t read_DTC_codes()
           dtc_errors[i + dtc_errors_received_counter * 4] = byte_low | (byte_high << 8);
           dtc_status_bytes[i + dtc_errors_received_counter * 4] = byte_status;
         }
-        Serial.print(F("DTC errors: "));
+        debug(F("DTC errors: "));
         for (int i = 0; i < dtc_error_amount; i++)
         {
-          Serial.print(i);
-          Serial.print(F(" = "));
-          Serial.print(dtc_errors[i], HEX);
-          Serial.print(F(" | "));
+          debug(i);
+          debug(F(" = "));
+          debughex(dtc_errors[i]);
+          debug(F(" | "));
         }
-        Serial.println("");
-        Serial.print(F("DTC Status bytes: "));
+        debugln(F(""));
+        debug(F("DTC Status bytes: "));
         for (int i = 0; i < dtc_error_amount; i++)
         {
-          Serial.print(i);
-          Serial.print(F(" = "));
-          Serial.print(dtc_status_bytes[i], HEX);
-          Serial.print(F(" | "));
+          debug(i);
+          debug(F(" = "));
+          debughex(dtc_status_bytes[i]);
+          debug(F(" | "));
         }
-        Serial.println("");
+        debugln(F(""));
         dtc_errors_received_counter++;
         if (dtc_errors_received_counter > 3)
         {
-          Serial.println(F("Too much errors to receive. INCREASE ARRAY SIZE!"));
+          debugln(F("Too much errors to receive. INCREASE ARRAY SIZE!"));
           all_dtc_errors_received = true;
           continue;
         }
@@ -2133,7 +2166,7 @@ uint8_t read_DTC_codes()
     }
     else
     {
-      Serial.println(F("DTC wrong block title"));
+      debugln(F("DTC wrong block title"));
     }
   }
 
@@ -2158,20 +2191,20 @@ bool kwp_exit()
 {
   lcd.clear();
   lcd_print(0, 0, "Exiting...");
-  Serial.println(F("Manual KWP exit.."));
+  debugln(F("Manual KWP exit.."));
   // Perform KWP end output block
   delay(15);
   char s[64];
   sprintf(s, "\x03%c\x06\x03", block_counter);
   if (!KWPSendBlock(s, 4))
   {
-    Serial.println(F("KWP exit failed"));
+    debugln(F("KWP exit failed"));
     lcd_print(0, 1, "error!");
     return false;
   }
   else
   {
-    Serial.println(F("KWP exit succesful"));
+    debugln(F("KWP exit succesful"));
     lcd_print(0, 1, "success!");
   }
   return true;
@@ -2179,191 +2212,115 @@ bool kwp_exit()
 
 bool obd_connect()
 {
-  Serial.println(F("Attempting to connect to ECU"));
+  debugln(F("Connecting to ECU"));
 
   block_counter = 0;
 
   lcd.clear();
   init_statusbar();
-  display_statusbar();
   lcd_print(0, 1, "->PRESS ENTER<-");
-  bool select = false;
-  while (!select)
+  while (true)
   {
     display_statusbar();
     int user_input = analogRead(0);
     if (user_input >= 600 && user_input < 800)
-    {
-      select = true;
-    }
-    delay(10);
+      break;
   }
 
-  lcd_print(0, 1, "Init...", 16);
-  obd.begin(baud_rate); // Baud rate 9600 for Golf 4/Bora or 10400 in weird cases
+  obd.begin(baud_rate); // 9600 for 0x01, 10400 for other addresses, 1200 for very old ECU < 1996
   display_statusbar();
-  Serial.print(F("KWP5BaudInit on addr 0x"));
-  Serial.println(addr_selected, HEX);
-
-  if (!simulation_mode_active && !KWP5BaudInit(addr_selected))
-  {
-    lcd_print(0, 1, "5BaudInit  ERROR");
-    Serial.println(F("KWP5BaudInit failed"));
-
-    return false;
-  }
+  debugln(F("Init "));
+  lcd_print(0, 1, F("Init"), 16);
+  KWP5BaudInit(addr_selected);
   display_statusbar();
 
-  // printDebug("Init ADDR " + String(addr_selected) + " with " + baud_rate + " baud");
-  char response[3] = {0, 0, 0}; // Response should be 0x55, 0x01, 0x8A
+  char response[3] = {0, 0, 0}; // Response should be (0x55, 0x01, 0x8A)base=16 = (85 1 138)base=2
   int response_size = 3;
-  if (!simulation_mode_active && !KWPReceiveBlock(response, 3, response_size, -1, true))
+  if (!KWPReceiveBlock(response, 3, response_size, -1, true) & ((((uint8_t)response[0]) != 0x55) || (((uint8_t)response[1]) != 0x01) || (((uint8_t)response[2]) != 0x8A)))
   {
-
-    lcd_print(0, 1, "Handshake error");
-    display_statusbar();
     serial_print_kwp_handshake_error(response);
-    delay(1444);
-    display_statusbar();
     lcd_print(0, 1, "ECU: " + String((uint8_t)response[0], HEX) + " " + String((uint8_t)response[1], HEX) + " " + String((uint8_t)response[2], HEX), 16);
-    delay(2122);
-    // printError("connect() KWPReceiveBlock error");
+    delay(ECU_TIMEOUT);
     return false;
   }
   display_statusbar();
-  if (!simulation_mode_active && ((((uint8_t)response[0]) != 0x55) || (((uint8_t)response[1]) != 0x01) || (((uint8_t)response[2]) != 0x8A))) // 85 1 138
-  {
-    display_statusbar();
-    lcd_print(0, 1, "Handshake  WRONG");
-    serial_print_kwp_handshake_error(response);
 
-    delay(1222);
-    display_statusbar();
-    lcd_print(0, 1, "ECU: " + String((uint8_t)response[0], HEX) + " " + String((uint8_t)response[1], HEX) + " " + String((uint8_t)response[2], HEX), 16);
-    delay(2122);
-    // printError("Expected [" + String(0x55) + " " + String(0x01) + " " + String(0x8A) + "] got [" + String((uint8_t)response[0]) + " " + String((uint8_t)response[1]) + " " + String((uint8_t)response[2]) + "]");
-    return false;
-  }
-  display_statusbar();
-  lcd_print(0, 1, "Handshake  RIGHT");
-  Serial.println(F("Handshake DONE"));
-  Serial.println(F("KWP5BaudInit DONE"));
-
-  lcd_print(0, 1, "BaudInit   DONE");
-  display_statusbar();
+  debugln(F("KWP5BaudInit DONE"));
   lcd_print(0, 1, "Read ECU data...");
-
-  Serial.println(F("ReadConnectBlocks"));
-
-  if (!simulation_mode_active && !readConnectBlocks(true))
+  debugln(F("ReadConnectBlocks"));
+  if (!readConnectBlocks(true))
   {
     display_statusbar();
     lcd_print(0, 1, "Read ECU data..N");
-    // printError("readConnectBlocks() error");
     return false;
   }
-  Serial.println(F("ReadConnectBlocks done"));
-  Serial.println(F("Connected to ECU"));
+  debugln(F("ECU connected"));
 
   connected = true;
   display_statusbar();
-  lcd_print(0, 1, "Read ECU data..Y");
-  // printDebug("Connection to ECU established!");
-  lcd_print(1, 1, "ECU connected!", 16);
+  lcd_print(1, 1, F("ECU connected"), 16);
   display_statusbar();
   return true;
 }
 
+void connect_helper_bool_display(String first_line, String left_string, String right_string)
+{
+  lcd.clear();
+  lcd_print(0, 0, first_line);
+  lcd_print(0, 1, left_string);
+  lcd_print(10, 1, right_string);
+}
+void connect_helper_bool(int8_t &userinput_value, uint8_t &config_value, uint8_t left_value, uint8_t right_value)
+{
+  while (userinput_value == -1)
+  {
+    int user_input = analogRead(0);
+    if (BUTTON_RIGHT(user_input))
+    {
+      // Right button
+      userinput_value = right_value;
+    }
+    else if (BUTTON_LEFT(user_input))
+    {
+      // Left button
+      userinput_value = left_value;
+    }
+  }
+
+  if (userinput_value == left_value)
+  {
+    lcd_clear(8, 1, 8);
+    config_value = left_value;
+  }
+  else if (userinput_value == right_value)
+  {
+    lcd_clear(0, 1, 8);
+    config_value = right_value;
+  }
+  delay(350);
+}
+/**
+ * Perform user setup before connecting to ECU
+ */
 bool connect()
 {
-  Serial.print(F("Connect attempt: "));
-  Serial.println(connection_attempts_counter);
+  debugstrnumln(F("Connect attempt: "), connection_attempts_counter);
 
   // Startup configuration // 0 = false, 1 = true, -1 = undefined for booleans as int8_t
-  int8_t userinput_debug_mode = -1; // Whether to print Serial messages
   int8_t userinput_simulation_mode = -1;
   uint16_t userinput_baudrate = 9600;
-  // uint16_t userinput_baudrate_last = userinput_baudrate;
   uint8_t userinput_baudrate_pointer = 3; // for default 9600
   uint16_t supported_baud_rates_size = 5;
   uint16_t supported_baud_rates[supported_baud_rates_size] = {1200, 2400, 4800, 9600, 10400};
-  uint8_t userinput_ecu_address = 0; // 1 or 17
+  int8_t userinput_ecu_address = -1; // 1 or 17
 
   if (connection_attempts_counter > 0)
   {
-    userinput_debug_mode = debug_mode_enabled;
     userinput_simulation_mode = simulation_mode_active;
   }
 
-  lcd.clear();
-  lcd_print(0, 0, "Debug mode");
-  lcd_print(0, 1, "<-- Y");
-  lcd_print(11, 1, "N -->");
-  while (userinput_debug_mode == -1)
-  {
-    int user_input = analogRead(0);
-    if (user_input < 60)
-    {
-      // Right button
-      userinput_debug_mode = 0;
-    }
-    else if (400 <= user_input && user_input < 600)
-    {
-      // Left button
-      userinput_debug_mode = 1;
-    }
-    delay(10);
-  }
-  if (userinput_debug_mode == 0)
-  {
-    lcd_clear(0, 1, 5);
-    debug_mode_enabled = false;
-  }
-  else if (userinput_debug_mode == 1)
-  {
-    lcd_clear(11, 1, 5);
-    debug_mode_enabled = true;
-  }
-  else
-  {
-    return false;
-  }
-  delay(555);
-
-  lcd.clear();
-  lcd_print(0, 0, "Connect mode");
-  lcd_print(0, 1, "<- ECU");
-  lcd_print(10, 1, "SIM ->");
-  while (userinput_simulation_mode == -1)
-  {
-    int user_input = analogRead(0);
-    if (user_input < 60)
-    {
-      // Right button
-      userinput_simulation_mode = 1;
-    }
-    else if (400 <= user_input && user_input < 600)
-    {
-      // Left button
-      userinput_simulation_mode = 0;
-    }
-    delay(10);
-  }
-  if (userinput_simulation_mode == 0)
-  {
-    lcd_clear(10, 1, 6);
-    simulation_mode_active = false;
-  }
-  else if (userinput_simulation_mode == 1)
-  {
-    lcd_clear(0, 1, 6);
-    simulation_mode_active = true;
-  }
-  else
-  {
-    return false;
-  }
-  delay(555);
+  connect_helper_bool_display("Connect mode", "<- ECU", "SIM ->");
+  connect_helper_bool(userinput_simulation_mode, simulation_mode_active, 0, 1);
 
   lcd.clear();
   lcd_print(0, 0, "<--   Baud:  -->");
@@ -2372,7 +2329,7 @@ bool connect()
   while (!pressed_enter)
   {
     int user_input = analogRead(0);
-    if (user_input < 60)
+    if (BUTTON_RIGHT(user_input))
     {
       // Right button
       if (userinput_baudrate_pointer >= 4)
@@ -2386,7 +2343,7 @@ bool connect()
       lcd_print(2, 1, "-> " + String(userinput_baudrate), 10);
       delay(333);
     }
-    else if (400 <= user_input && user_input < 600)
+    else if (BUTTON_LEFT(user_input))
     {
       // Left button
       if (userinput_baudrate_pointer <= 0)
@@ -2400,80 +2357,28 @@ bool connect()
       lcd_print(2, 1, "-> " + String(userinput_baudrate), 10);
       delay(333);
     }
-    else if (user_input >= 600 && user_input < 800)
+    else if (BUTTON_SELECT(user_input))
     {
       // Enter button
       pressed_enter = true;
     }
     delay(10);
   }
-
-  bool save_check = false;
-  for (uint8_t i = 0; i < supported_baud_rates_size; i++)
-  {
-    if (userinput_baudrate == supported_baud_rates[i])
-      save_check = true;
-  }
-  if (!save_check)
-    return false;
-
   baud_rate = userinput_baudrate;
-  // if (baud_rate < 4800) /*I dont think this is a good approach*/
-  //   timeout_to_add = 2000; // Extend timeout for 1200 and 2400 baud due to concerns about its low communication speed
   delay(555);
 
-  lcd.clear();
-  lcd_print(0, 0, "ECU address:");
-  lcd_print(0, 1, "<-- 01");
-  lcd_print(10, 1, "17 -->");
-  while (userinput_ecu_address == 0)
-  {
-    int user_input = analogRead(0);
-    if (user_input < 60)
-    {
-      // Right button
-      userinput_ecu_address = 17;
-    }
-    else if (400 <= user_input && user_input < 600)
-    {
-      // Left button
-      userinput_ecu_address = 1;
-    }
-    delay(10);
-  }
-  if (userinput_ecu_address == 1)
-  {
-    lcd_clear(10, 1, 6);
-    addr_selected = ADDR_ENGINE;
-  }
-  else if (userinput_ecu_address == 17)
-  {
-    lcd_clear(0, 1, 6);
-    addr_selected = ADDR_INSTRUMENTS;
-  }
-  else
-  {
-    return false;
-  }
-  delay(555);
+  connect_helper_bool_display("ECU address:", "<-- 01", "17 -->");
+  connect_helper_bool(userinput_ecu_address, addr_selected, ADDR_ENGINE, ADDR_INSTRUMENTS);
 
-  Serial.println(F("Saved configuration: "));
-  Serial.println(F("--- DEBUG on"));
-  Serial.print(F("--- SIMULATION "));
-  if (simulation_mode_active)
-    Serial.println(F("on"));
-  else
-    Serial.println(F("off"));
-  Serial.print(F("--- "));
-  Serial.print(baud_rate);
-  Serial.println(F(" baud"));
-  Serial.print(F("--- "));
-  Serial.print(addr_selected, HEX);
-  Serial.println(F(" HEX"));
+  debugln(F("Saved configuration: "));
+  debugstrnumln(F("--- DEBUG "), DEBUG);
+  debugstrnumln(F("--- SIMULATION "), simulation_mode_active);
+  debugstrnumln(F("--- baud "), baud_rate);
+  debugstrnumhexln(F("--- addr "), addr_selected);
 
   // Connect to ECU
   connection_attempts_counter++;
-  if (!obd_connect())
+  if (!simulation_mode_active && !obd_connect())
   {
     disconnect();
     return false;
@@ -2490,15 +2395,17 @@ bool connect()
 void setup()
 {
 
-  // For debug USB Serial monitor
+// For debug USB Serial monitor
+#if DEBUG == 1
   Serial.begin(9600);
+#endif
 
   // Display
-  lcd.begin(16, 2); // col, rows
+  lcd.begin(DISPLAY_MAX_X, DISPLAY_MAX_Y);
 
   // Pins
-  pinMode(pin_tx, OUTPUT); // TX
-  digitalWrite(pin_tx, HIGH);
+  pinMode(PIN_TX, OUTPUT); // TX
+  digitalWrite(PIN_TX, HIGH);
 
   // Startup animation
   lcd.clear();
@@ -2513,9 +2420,7 @@ void loop()
 
   // Check connection
   if (!connected && !connect())
-  {
     return;
-  }
 
   // Update values
   if (!simulation_mode_active)
@@ -2549,7 +2454,7 @@ void loop()
       }
       break;
     default:
-      Serial.println(F("Kwp_mode undefined EXIT"));
+      debugln(F("Kwp_mode undefined EXIT"));
 
       break;
     }
@@ -2558,19 +2463,6 @@ void loop()
   {
     simulate_values();
     delay(222);
-  }
-
-  if (engine_rpm > 4000)
-  {
-    // TODO Turn on LED
-  }
-  if (oil_temp < 80)
-  {
-    // TODO
-  }
-  if (coolant_temp < 80)
-  {
-    // TODO
   }
 
   compute_values();
@@ -2587,7 +2479,7 @@ void loop()
       button_pressed = true;
       increment_menu(menu, menu_max);
     }
-    else if (user_input < 600 && user_input >= 400)
+    else if (BUTTON_LEFT(user_input))
     {
       // Left button
       button_pressed = true;
@@ -2598,63 +2490,55 @@ void loop()
       switch (menu)
       {
       case 0:
-        if (user_input >= 60 && user_input < 200)
+        if (BUTTON_UP(user_input))
         {
-          // Up button
           button_pressed = true;
           increment_menu(menu_cockpit_screen, menu_cockpit_screen_max);
         }
-        else if (user_input >= 200 && user_input < 400)
+        else if (BUTTON_DOWN(user_input))
         {
-          // Down button
           button_pressed = true;
           decrement_menu(menu_cockpit_screen, menu_cockpit_screen_max);
         }
         break;
       case 1:
-        if (user_input >= 60 && user_input < 200)
+        if (BUTTON_UP(user_input))
         {
-          // Up button
           button_pressed = true;
           increment_menu(menu_experimental_screen, menu_experimental_screen_max);
           increment_group_current();
         }
-        else if (user_input >= 200 && user_input < 400)
+        else if (BUTTON_DOWN(user_input))
         {
-          // Down button
           button_pressed = true;
           decrement_menu(menu_experimental_screen, menu_experimental_screen_max);
           decrement_group_current();
         }
-        else if (user_input >= 600 && user_input < 800)
+        else if (BUTTON_SELECT(user_input))
         {
-          // Select button
           button_pressed = true;
           invert_group_side();
         }
         break;
       case 2:
-        if (user_input >= 60 && user_input < 200)
+        if (BUTTON_UP(user_input))
         {
-          // Up button
           button_pressed = true;
           increment_menu(menu_debug_screen, menu_debug_screen_max);
         }
-        else if (user_input >= 200 && user_input < 400)
+        else if (BUTTON_DOWN(user_input))
         {
-          // Down button
           button_pressed = true;
           decrement_menu(menu_debug_screen, menu_debug_screen_max);
         }
         break;
       case 3:
-        if (user_input >= 60 && user_input < 200)
+        if (BUTTON_UP(user_input))
         {
-          // Up button
           button_pressed = true;
           increment_menu(menu_dtc_screen, menu_dtc_screen_max);
         }
-        else if (user_input >= 200 && user_input < 400)
+        else if (BUTTON_DOWN(user_input))
         {
           // Down button
           button_pressed = true;
@@ -2665,7 +2549,7 @@ void loop()
           switch (menu_dtc_screen)
           {
           case 0:
-            if (user_input >= 600 && user_input < 800)
+            if (BUTTON_SELECT(user_input))
             {
               // Select button = Exit/Reconnect
               delay(5);
@@ -2680,9 +2564,8 @@ void loop()
             }
             break;
           case 1:
-            if (user_input >= 600 && user_input < 800)
+            if (BUTTON_SELECT(user_input))
             {
-              // Select button = Exit/Reconnect
               delay(5);
               if (!delete_DTC_codes())
               {
@@ -2701,13 +2584,13 @@ void loop()
         }
         break;
       case 4:
-        if (user_input >= 60 && user_input < 200)
+        if (BUTTON_UP(user_input))
         {
           // Up button
           button_pressed = true;
           increment_menu(menu_settings_screen, menu_settings_screen_max);
         }
-        else if (user_input >= 200 && user_input < 400)
+        else if (BUTTON_DOWN(user_input))
         {
           // Down button
           button_pressed = true;
@@ -2718,16 +2601,16 @@ void loop()
           switch (menu_settings_screen)
           {
           case 0:
-            if (user_input >= 600 && user_input < 800)
+            if (BUTTON_SELECT(user_input))
             {
-              // Select button = Exit/Reconnect
+              // Exit/Reconnect
               kwp_exit();
               disconnect();
               return;
             }
             break;
           case 1:
-            if (user_input >= 600 && user_input < 800)
+            if (BUTTON_SELECT(user_input))
             {
               switch (kwp_mode)
               {
@@ -2790,22 +2673,26 @@ void loop()
   }
 
   // Display current menu and screen
-  switch (menu)
+  if ((millis() >= display_frame_timestamp))
   {
-  case 0:
-    display_menu_cockpit();
-    break;
-  case 1:
-    display_menu_experimental();
-    break;
-  case 2:
-    display_menu_debug();
-    break;
-  case 3:
-    display_menu_dtc(); // Fix later
-    break;
-  case 4:
-    display_menu_settings();
-    break;
+    switch (menu)
+    {
+    case 0:
+      display_menu_cockpit();
+      break;
+    case 1:
+      display_menu_experimental();
+      break;
+    case 2:
+      display_menu_debug();
+      break;
+    case 3:
+      display_menu_dtc(); // Fix later
+      break;
+    case 4:
+      display_menu_settings();
+      break;
+    }
+    display_frame_timestamp = millis() + DISPLAY_FRAME_LENGTH;
   }
 }
