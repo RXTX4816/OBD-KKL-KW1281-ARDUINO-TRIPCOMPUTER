@@ -530,7 +530,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
   unsigned long timeout = millis() + timeout_to_add;
   uint16_t temp_iteration_counter = 0;
   uint8_t temp_0x0F_counter = 0;
-  while ((recvcount == 0) || (recvcount < size))
+  while ((recvcount == 0) || (recvcount != size))
   {
     while (obd.available())
     {
@@ -554,8 +554,11 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         debug(F("s[] = "));
         for (int i = 0; i < array_length; i++)
         {
-          debug(F(" "));
-          debughex(s[i]);
+          if (i < recvcount)
+          {
+            debug(F(" "));
+            debughex(s[i]);
+          }
         }
         debugln(F("------"));
         lcd_print(0, 1, "ERROR data = -1 ");
@@ -663,8 +666,11 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
           debug(F("s[] = "));
           for (int i = 0; i < array_length; i++)
           {
-            debug(F(" "));
-            debughex(s[i]);
+            if (i < recvcount)
+            {
+              debug(F(" "));
+              debughex(s[i]);
+            }
           }
           debugln(F("------"));
           lcd_print(0, 1, "ERR:size>maxsiz2");
@@ -696,36 +702,45 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
       {
         if (data != block_counter)
         {
-          if (initialization_phase)
+          // if (initialization_phase)
+          //{
+          //   lcd.setCursor(0, 1);
+          //   lcd.print("ERR: BLOCK COUNT");
+          //   delay(1000);
+          //   lcd.print("Exp:" + String(data) + " Is:" + String(block_counter) + "         ");
+          //   delay(1111);
+          // }
+          if (data != 0x00)
           {
-            lcd.setCursor(0, 1);
-            lcd.print("ERR: BLOCK COUNT");
-            delay(1000);
-            lcd.print("Exp:" + String(data) + " Is:" + String(block_counter) + "         ");
-            delay(1111);
+            debugln(F("------"));
+            debugstrnum(F(" - KWPReceiveBlock error: Invalid block counter. Expected: "), block_counter);
+            debugstrnumln(F(" Is: "), data);
+            debugstrnumln(F("ackeachbyte ="), ackeachbyte);
+            debugstrnumhexln(F("data ="), data);
+            debugstrnumln(F("recvcount ="), recvcount);
+            debugstrnumln(F("maxsize ="), maxsize);
+            debugstrnumln(F("size ="), size);
+            debugstrnumln(F("source ="), source);
+            debugstrnumln(F("ECU_receive_counter ="), ECU_receive_counter);
+            debugstrnumln(F("ECU_transmit_counter ="), ECU_transmit_counter);
+            debugstrnumln(F("initialization_phase ="), initialization_phase);
+            size_t array_length = sizeof(s) / sizeof(s[0]);
+            debugstrnumln(F("s[] length ="), array_length);
+            debug(F("s[] = "));
+            for (int i = 0; i < array_length; i++)
+            {
+              if (i < recvcount)
+              {
+                debug(F(" "));
+                debughex(s[i]);
+              }
+            }
+            debugln(F("------"));
+            return false;
+          } else {
+            // Maybe after error handling.
+            block_counter = 0x00;
           }
-          debugln(F("------"));
-          debugstrnum(F(" - KWPReceiveBlock error: Invalid block counter. Expected: "), data);
-          debugstrnumln(F(" Is: "), block_counter);
-          debugstrnumln(F("ackeachbyte ="), ackeachbyte);
-          debugstrnumhexln(F("data ="), data);
-          debugstrnumln(F("recvcount ="), recvcount);
-          debugstrnumln(F("maxsize ="), maxsize);
-          debugstrnumln(F("size ="), size);
-          debugstrnumln(F("source ="), source);
-          debugstrnumln(F("ECU_receive_counter ="), ECU_receive_counter);
-          debugstrnumln(F("ECU_transmit_counter ="), ECU_transmit_counter);
-          debugstrnumln(F("initialization_phase ="), initialization_phase);
-          size_t array_length = sizeof(s) / sizeof(s[0]);
-          debugstrnumln(F("s[] length ="), array_length);
-          debug(F("s[] = "));
-          for (int i = 0; i < array_length; i++)
-          {
-            debug(F(" "));
-            debughex(s[i]);
-          }
-          debugln(F("------"));
-          return false;
         }
       }
       if (((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)))
@@ -760,8 +775,11 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
       debug(F("s[] = "));
       for (int i = 0; i < array_length; i++)
       {
-        debug(F(" "));
-        debughex(s[i]);
+        if (i < recvcount)
+        {
+          debug(F(" "));
+          debughex(s[i]);
+        }
       }
       debugln(F("------"));
 
@@ -871,10 +889,11 @@ bool readConnectBlocks(bool initialization_phase = false)
       debug(F("s[] = "));
       for (int i = 0; i < array_length; i++)
       {
-        debug(F(" "));
-        debug(i);
-        debug(F(": "));
-        debughex(s[i]);
+        if (i < size)
+        {
+          debug(F(": "));
+          debughex(s[i]);
+        }
       }
       debugln(F(" "));
       debugln(F("------"));
@@ -1257,6 +1276,9 @@ bool connect()
 
   // Connect to ECU
   connection_attempts_counter++;
+
+  ECU_receive_counter = 0;
+  ECU_transmit_counter = 0;
   if (!obd_connect())
   {
     disconnect();
