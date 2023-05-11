@@ -49,6 +49,8 @@ char STRING_ERR[] = "ERR";
 #define BUTTON_LEFT(in) (in >= 400 && in < 600)
 #define BUTTON_SELECT(in) (in >= 600 && in < 800)
 uint32_t endTime = 0;
+uint16_t ECU_receive_counter = 0;
+uint16_t ECU_transmit_counter = 0;
 
 // Backend
 NewSoftwareSerial obd(pin_rx, pin_tx, false); // rx, tx, inverse logic = false
@@ -282,8 +284,10 @@ bool is_connected()
 void obdWrite(uint8_t data)
 {
 
-  debug(F("->MCU: "));
-  debughexln(data);
+  // debug(F("->MCU: "));
+  // debughexln(data);
+
+  ECU_transmit_counter++;
 
   uint8_t to_delay = 5;
   switch (baud_rate)
@@ -311,7 +315,7 @@ void obdWrite(uint8_t data)
  *
  * @return uint8_t The incoming byte or -1 if timeout
  */
-uint8_t obdRead()
+int16_t obdRead()
 {
   unsigned long timeout = millis() + timeout_to_add;
   while (!obd.available())
@@ -322,9 +326,13 @@ uint8_t obdRead()
       return -1;
     }
   }
-  uint8_t data = obd.read();
-  //debug(F("ECU: "));
-  //debughexln(data);
+  int16_t data = obd.read();
+  if (data != -1)
+  {
+    ECU_receive_counter++;
+  }
+  // debug(F("ECU: "));
+  // debughexln(data);
 
   return data;
 }
@@ -391,7 +399,7 @@ bool KWP5BaudInit(uint8_t addr)
 {
   debug(F("5 baud: (0)"));
   send5baud(addr);
-  //debugln(F(" (9) END"));
+  // debugln(F(" (9) END"));
   return true;
 }
 
@@ -431,7 +439,7 @@ bool KWPSendBlock(char *s, int size)
     }*/
     if (i < size - 1)
     {
-      uint8_t complement = obdRead();
+      int16_t complement = obdRead();
       if (complement != (data ^ 0xFF))
       {
         debugln(F("ERROR: invalid complement"));
@@ -482,20 +490,39 @@ bool KWPSendAckBlock()
  * @return true No errors
  * @return false Errors
  */
+// Testing values
 bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool initialization_phase = false)
 {
   bool ackeachbyte = false;
-  uint8_t data = 0;
+  int16_t data = 0;
   int recvcount = 0;
   if (size == 0)
     ackeachbyte = true;
 
-  //debugstrnum(F(" - KWPReceiveBlock. Size: "), size);
-  //debugstrnum(F(". Block counter: "), block_counter);
+  // debugstrnum(F(" - KWPReceiveBlock. Size: "), size);
+  // debugstrnum(F(". Block counter: "), block_counter);
 
   if (size > maxsize)
   {
+    debugln(F("------"));
     debugln(F(" - KWPReceiveBlock error: Invalid maxsize"));
+    debugstrnumln(F("ackeachbyte ="), ackeachbyte);
+    debugstrnumhexln(F("data ="), data);
+    debugstrnumln(F("recvcount ="), recvcount);
+    debugstrnumln(F("maxsize ="), maxsize);
+    debugstrnumln(F("size ="), size);
+    debugstrnumln(F("source ="), source);
+    debugstrnumln(F("ECU_receive_counter ="), ECU_receive_counter);
+    debugstrnumln(F("ECU_transmit_counter ="), ECU_transmit_counter);
+    size_t array_length = sizeof(s) / sizeof(s[0]);
+    debugstrnumln(F("s[] length ="), array_length);
+    debug(F("s[] = "));
+    for (int i = 0; i < array_length; i++)
+    {
+      debug(F(" "));
+      debughex(s[i]);
+    }
+    debugln(F("------"));
     lcd_print(0, 1, "ERR:size>maxsize");
     delay(2000);
     return false;
@@ -511,7 +538,26 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
       data = obdRead();
       if (data == -1)
       {
+        debugln(F("------"));
         debugln(F(" - KWPReceiveBlock error: (Available=0) or empty buffer!"));
+        debugstrnumln(F("ackeachbyte ="), ackeachbyte);
+        debugstrnumhexln(F("data ="), data);
+        debugstrnumln(F("recvcount ="), recvcount);
+        debugstrnumln(F("maxsize ="), maxsize);
+        debugstrnumln(F("size ="), size);
+        debugstrnumln(F("source ="), source);
+        debugstrnumln(F("ECU_receive_counter ="), ECU_receive_counter);
+        debugstrnumln(F("ECU_transmit_counter ="), ECU_transmit_counter);
+        debugstrnumln(F("initialization_phase ="), initialization_phase);
+        size_t array_length = sizeof(s) / sizeof(s[0]);
+        debugstrnumln(F("s[] length ="), array_length);
+        debug(F("s[] = "));
+        for (int i = 0; i < array_length; i++)
+        {
+          debug(F(" "));
+          debughex(s[i]);
+        }
+        debugln(F("------"));
         lcd_print(0, 1, "ERROR data = -1 ");
         delay(1700);
         return false;
@@ -522,16 +568,16 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
 
       if (initialization_phase && recvcount > maxsize)
       {
-        //Serial.print(F(" - - - Init com error. Recievecount:"));
-        //Serial.print(recvcount);
-        //Serial.print(F(" data:0x"));
-        //Serial.println(data, HEX);
+        // Serial.print(F(" - - - Init com error. Recievecount:"));
+        // Serial.print(recvcount);
+        // Serial.print(F(" data:0x"));
+        // Serial.println(data, HEX);
 
         if (data == 0x55)
         {
           temp_0x0F_counter = 0;
           // Maybe ECU is trying to send sync bytes again?
-          //Serial.println(F(" - - - Maybe sync bytes coming in"));
+          // Serial.println(F(" - - - Maybe sync bytes coming in"));
           // Reset to beginning of init phase
           s[0] = 0x00;
           s[1] = 0x00;
@@ -539,38 +585,38 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
           size = 3;
           recvcount = 1;
           s[0] = 0x55;
-          //Serial.println(F(" - - - Reset KWPReceiveBlock: s={0x55,0,0}, size=3, recvcount=1"));
+          // Serial.println(F(" - - - Reset KWPReceiveBlock: s={0x55,0,0}, size=3, recvcount=1"));
 
           timeout = millis() + timeout_to_add;
-          //Serial.print(F(" - KWPReceiveBlock info: Added timeout. ReceiveCount: "));
-          //Serial.print((uint8_t)recvcount);
-          //Serial.print(F(". Processed data: "));
-          //Serial.print((uint8_t)data, HEX);
-          //Serial.print(F(". ACK compl: "));
-          //Serial.print(((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)));
-          //Serial.print(F(". Iteration: "));
-          //Serial.print(temp_iteration_counter);
+          // Serial.print(F(" - KWPReceiveBlock info: Added timeout. ReceiveCount: "));
+          // Serial.print((uint8_t)recvcount);
+          // Serial.print(F(". Processed data: "));
+          // Serial.print((uint8_t)data, HEX);
+          // Serial.print(F(". ACK compl: "));
+          // Serial.print(((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)));
+          // Serial.print(F(". Iteration: "));
+          // Serial.print(temp_iteration_counter);
         }
         else if (data == 0xFF)
         {
           temp_0x0F_counter = 0;
-          //Serial.println(F(" - - - Expected, skipping. Maybe beginning of COM ERROR"));
+          // Serial.println(F(" - - - Expected, skipping. Maybe beginning of COM ERROR"));
         }
         else if (data == 0x0F)
         {
           if (temp_0x0F_counter >= 1)
           {
-            //Serial.println(F(" - - - Expected, acknowledge"));
+            // Serial.println(F(" - - - Expected, acknowledge"));
             obdWrite(data ^ 0xFF);
             timeout = millis() + timeout_to_add;
-            //Serial.print(F(" - KWPReceiveBlock info: Added timeout. ReceiveCount: "));
-            //Serial.print((uint8_t)recvcount);
-            //Serial.print(F(". Processed data: "));
-            //Serial.print((uint8_t)data, HEX);
-            //Serial.print(F(". ACK compl: "));
-            //Serial.print(((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)));
-            //Serial.print(F(". Iteration: "));
-            //Serial.print(temp_iteration_counter);
+            // Serial.print(F(" - KWPReceiveBlock info: Added timeout. ReceiveCount: "));
+            // Serial.print((uint8_t)recvcount);
+            // Serial.print(F(". Processed data: "));
+            // Serial.print((uint8_t)data, HEX);
+            // Serial.print(F(". ACK compl: "));
+            // Serial.print(((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)));
+            // Serial.print(F(". Iteration: "));
+            // Serial.print(temp_iteration_counter);
             temp_0x0F_counter = 0;
           }
           else
@@ -580,7 +626,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         }
         else
         {
-          //Serial.println(F(" - - - Unknown data sent by ECU! Trying to ignore and NOT send an ACK"));
+          // Serial.println(F(" - - - Unknown data sent by ECU! Trying to ignore and NOT send an ACK"));
           temp_0x0F_counter = 0;
         }
         continue;
@@ -601,8 +647,27 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         if (size > maxsize)
         {
 
-          debugln(F(" - KWPReceiveBlock error: Invalid maxsize"));
-          lcd_print(0, 1, "ERR:size>maxsize");
+          debugln(F("------"));
+          debugln(F(" - KWPReceiveBlock error: Invalid maxsize 2 if ((size == 0) && (recvcount == 1))"));
+          debugstrnumln(F("ackeachbyte ="), ackeachbyte);
+          debugstrnumhexln(F("data ="), data);
+          debugstrnumln(F("recvcount ="), recvcount);
+          debugstrnumln(F("maxsize ="), maxsize);
+          debugstrnumln(F("size ="), size);
+          debugstrnumln(F("source ="), source);
+          debugstrnumln(F("ECU_receive_counter ="), ECU_receive_counter);
+          debugstrnumln(F("ECU_transmit_counter ="), ECU_transmit_counter);
+          debugstrnumln(F("initialization_phase ="), initialization_phase);
+          size_t array_length = sizeof(s) / sizeof(s[0]);
+          debugstrnumln(F("s[] length ="), array_length);
+          debug(F("s[] = "));
+          for (int i = 0; i < array_length; i++)
+          {
+            debug(F(" "));
+            debughex(s[i]);
+          }
+          debugln(F("------"));
+          lcd_print(0, 1, "ERR:size>maxsiz2");
           delay(2000);
           return false;
         }
@@ -639,8 +704,27 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
             lcd.print("Exp:" + String(data) + " Is:" + String(block_counter) + "         ");
             delay(1111);
           }
-          debugstrnum(F(" - KWPReceiveBlock error: Invalid block counter. Expected: "), (uint8_t)data);
-          debugstrnumln(F(" Is: "), (uint8_t)block_counter);
+          debugln(F("------"));
+          debugstrnum(F(" - KWPReceiveBlock error: Invalid block counter. Expected: "), data);
+          debugstrnumln(F(" Is: "), block_counter);
+          debugstrnumln(F("ackeachbyte ="), ackeachbyte);
+          debugstrnumhexln(F("data ="), data);
+          debugstrnumln(F("recvcount ="), recvcount);
+          debugstrnumln(F("maxsize ="), maxsize);
+          debugstrnumln(F("size ="), size);
+          debugstrnumln(F("source ="), source);
+          debugstrnumln(F("ECU_receive_counter ="), ECU_receive_counter);
+          debugstrnumln(F("ECU_transmit_counter ="), ECU_transmit_counter);
+          debugstrnumln(F("initialization_phase ="), initialization_phase);
+          size_t array_length = sizeof(s) / sizeof(s[0]);
+          debugstrnumln(F("s[] length ="), array_length);
+          debug(F("s[] = "));
+          for (int i = 0; i < array_length; i++)
+          {
+            debug(F(" "));
+            debughex(s[i]);
+          }
+          debugln(F("------"));
           return false;
         }
       }
@@ -658,10 +742,28 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
     if (millis() >= timeout)
     {
 
+      debugln(F("------"));
       debug(F(" - KWPReceiveBlock: Timeout overstepped on iteration "));
       debug(temp_iteration_counter);
       debug(F(" with receivecount "));
       debugln(recvcount);
+      debugstrnumln(F("ackeachbyte ="), ackeachbyte);
+      debugstrnumhexln(F("data ="), data);
+      debugstrnumln(F("recvcount ="), recvcount);
+      debugstrnumln(F("maxsize ="), maxsize);
+      debugstrnumln(F("size ="), size);
+      debugstrnumln(F("source ="), source);
+      debugstrnumln(F("ECU_receive_counter ="), ECU_receive_counter);
+      debugstrnumln(F("ECU_transmit_counter ="), ECU_transmit_counter);
+      size_t array_length = sizeof(s) / sizeof(s[0]);
+      debugstrnumln(F("s[] length ="), array_length);
+      debug(F("s[] = "));
+      for (int i = 0; i < array_length; i++)
+      {
+        debug(F(" "));
+        debughex(s[i]);
+      }
+      debugln(F("------"));
 
       if (recvcount == 0)
       {
@@ -747,7 +849,7 @@ bool KWPReceiveAckBlock()
  */
 bool readConnectBlocks(bool initialization_phase = false)
 {
-  //debugln(F(" - Readconnectblocks"));
+  // debugln(F(" - Readconnectblocks"));
 
   String info;
   while (true)
@@ -755,14 +857,79 @@ bool readConnectBlocks(bool initialization_phase = false)
     int size = 0;
     char s[64];
     if (!(KWPReceiveBlock(s, 64, size, -1, initialization_phase)))
+    {
+      debugln(F("------"));
+      debugln(F(" - Readconnectblocks ERROR in KWP receive block"));
+      debugstrnumln(F("initialization_phase ="), initialization_phase);
+      debugstrnumln(F("maxsize ="), 64);
+      debugstrnumln(F("size ="), size);
+      debugstrnumln(F("source ="), -1);
+      debugstrnumln(F("ECU_receive_counter ="), ECU_receive_counter);
+      debugstrnumln(F("ECU_transmit_counter ="), ECU_transmit_counter);
+      size_t array_length = sizeof(s) / sizeof(s[0]);
+      debugstrnumln(F("s[] length ="), array_length);
+      debug(F("s[] = "));
+      for (int i = 0; i < array_length; i++)
+      {
+        debug(F(" "));
+        debug(i);
+        debug(F(": "));
+        debughex(s[i]);
+      }
+      debugln(F(" "));
+      debugln(F("------"));
       return false;
+    }
     if (size == 0)
+    {
+
+      debugln(F("------"));
+      debugln(F(" - Readconnectblocks ERROR size == 0"));
+      debugstrnumln(F("initialization_phase ="), initialization_phase);
+      debugstrnumln(F("maxsize ="), 64);
+      debugstrnumln(F("size ="), size);
+      debugstrnumln(F("source ="), -1);
+      debugstrnumln(F("ECU_receive_counter ="), ECU_receive_counter);
+      debugstrnumln(F("ECU_transmit_counter ="), ECU_transmit_counter);
+      size_t array_length = sizeof(s) / sizeof(s[0]);
+      debugstrnumln(F("s[] length ="), array_length);
+      debug(F("s[] = "));
+      for (int i = 0; i < array_length; i++)
+      {
+        debug(F(" "));
+        debug(i);
+        debug(F(": "));
+        debughex(s[i]);
+      }
+      debugln(F(" "));
+      debugln(F("------"));
       return false;
+    }
+
     if (s[2] == '\x09')
       break;
     if (s[2] != '\xF6')
     {
+      debugln(F("------"));
       debugln(F(" - Readconnectblocks ERROR: unexpected answer"));
+      debugstrnumln(F("initialization_phase ="), initialization_phase);
+      debugstrnumln(F("maxsize ="), 64);
+      debugstrnumln(F("size ="), size);
+      debugstrnumln(F("source ="), -1);
+      debugstrnumln(F("ECU_receive_counter ="), ECU_receive_counter);
+      debugstrnumln(F("ECU_transmit_counter ="), ECU_transmit_counter);
+      size_t array_length = sizeof(s) / sizeof(s[0]);
+      debugstrnumln(F("s[] length ="), array_length);
+      debug(F("s[] = "));
+      for (int i = 0; i < array_length; i++)
+      {
+        debug(F(" "));
+        debug(i);
+        debug(F(": "));
+        debughex(s[i]);
+      }
+      debugln(F(" "));
+      debugln(F("------"));
 
       lcd_print(0, 1, "ERR: s[2]!=xF6");
       delay(2000);
@@ -773,7 +940,7 @@ bool readConnectBlocks(bool initialization_phase = false)
     if (!KWPSendAckBlock())
       return false;
   }
-  //debugstrnum(F("label = "), info);
+  // debugstrnum(F("label = "), info);
   return true;
 }
 
@@ -861,6 +1028,17 @@ bool obd_connect()
     debug(F(" "));
     debughex((uint8_t)response[2]);
     debugln(F("]"));
+
+    debug(F("response[3]="));
+    for (int i = 0; i < 3; i++)
+    {
+      debug(F(" "));
+      debughex(response[i]);
+    }
+    debugln(" ");
+    debugstrnumln(F("size="), response_size);
+    debugln(F("init_phase=TRUE"));
+
     lcd_print(0, 1, "ECU: " + String((uint8_t)response[0], HEX) + " " + String((uint8_t)response[1], HEX) + " " + String((uint8_t)response[2], HEX), 16);
     delay(ECU_TIMEOUT);
     return false;
@@ -880,6 +1058,19 @@ bool obd_connect()
     debug(F(" "));
     debughex((uint8_t)response[2]);
     debugln(F("]"));
+
+    debugln("KWPReceiveBlock(3) succesful!");
+
+    debug(F("response[3]="));
+    for (int i = 0; i < 3; i++)
+    {
+      debug(F(" "));
+      debughex(response[i]);
+    }
+    debugln(" ");
+    debugstrnumln(F("size="), response_size);
+    debugln(F("init_phase=TRUE"));
+
     lcd_print(0, 1, "ECU: " + String((uint8_t)response[0], HEX) + " " + String((uint8_t)response[1], HEX) + " " + String((uint8_t)response[2], HEX), 16);
     delay(ECU_TIMEOUT);
     return false;
@@ -888,10 +1079,11 @@ bool obd_connect()
   // display_statusbar();
 
   // debugln(F("KWP5BaudInit DONE"));
-  //lcd_print(0, 1, "Read ECU data...");
+  // lcd_print(0, 1, "Read ECU data...");
   // debugln(F("ReadConnectBlocks"));
-  if (!readConnectBlocks(true))
+  if (!readConnectBlocks(false))
   {
+    debugln(F("ECU connection failed"));
     display_statusbar();
     lcd_print(0, 1, "Read ECU data..N");
     return false;
@@ -919,13 +1111,14 @@ bool connect()
   uint8_t userinput_pre_delay = obd_pre_delay;
   uint8_t userinput_pre_delay_pointer = 0;
   uint8_t userinput_pre_delays_size = 7;
-  uint8_t userinput_pre_delays[userinput_pre_delays_size] = {0, 5, 10, 15, 35, 50, 80};
+  uint8_t userinput_pre_delays[userinput_pre_delays_size] = {5, 10, 20, 25, 30, 70, 100};
 
   lcd.clear();
   lcd_print(0, 0, "<--   Baud:  -->");
   lcd_print(2, 1, "-> " + String(userinput_baudrate), 10);
   bool pressed_enter = false;
-  if (AUTO_SETUP) {
+  if (AUTO_SETUP)
+  {
     userinput_baudrate = 1200;
     pressed_enter = true;
   }
@@ -1137,7 +1330,7 @@ void loop()
   if ((millis() >= display_frame_timestamp))
   {
     lcd_print(6, 0, block_counter);
-    lcd_print(6, 1, (uint16_t) ((millis()-connect_time_start)/1000));
+    lcd_print(6, 1, (uint16_t)((millis() - connect_time_start) / 1000));
     display_frame_timestamp = millis() + DISPLAY_FRAME_LENGTH;
   }
 }
