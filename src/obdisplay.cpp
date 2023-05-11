@@ -323,8 +323,8 @@ uint8_t obdRead()
     }
   }
   uint8_t data = obd.read();
-  debug(F("ECU: "));
-  debughexln(data);
+  //debug(F("ECU: "));
+  //debughexln(data);
 
   return data;
 }
@@ -391,7 +391,7 @@ bool KWP5BaudInit(uint8_t addr)
 {
   debug(F("5 baud: (0)"));
   send5baud(addr);
-  debugln(F(" (9) END"));
+  //debugln(F(" (9) END"));
   return true;
 }
 
@@ -490,8 +490,8 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
   if (size == 0)
     ackeachbyte = true;
 
-  debugstrnum(F(" - KWPReceiveBlock. Size: "), size);
-  debugstrnum(F(". Block counter: "), block_counter);
+  //debugstrnum(F(" - KWPReceiveBlock. Size: "), size);
+  //debugstrnum(F(". Block counter: "), block_counter);
 
   if (size > maxsize)
   {
@@ -522,16 +522,16 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
 
       if (initialization_phase && recvcount > maxsize)
       {
-        Serial.print(F(" - - - Init com error. Recievecount:"));
-        Serial.print(recvcount);
-        Serial.print(F(" data:0x"));
-        Serial.println(data, HEX);
+        //Serial.print(F(" - - - Init com error. Recievecount:"));
+        //Serial.print(recvcount);
+        //Serial.print(F(" data:0x"));
+        //Serial.println(data, HEX);
 
         if (data == 0x55)
         {
           temp_0x0F_counter = 0;
           // Maybe ECU is trying to send sync bytes again?
-          Serial.println(F(" - - - Maybe sync bytes coming in"));
+          //Serial.println(F(" - - - Maybe sync bytes coming in"));
           // Reset to beginning of init phase
           s[0] = 0x00;
           s[1] = 0x00;
@@ -539,38 +539,38 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
           size = 3;
           recvcount = 1;
           s[0] = 0x55;
-          Serial.println(F(" - - - Reset KWPReceiveBlock: s={0x55,0,0}, size=3, recvcount=1"));
+          //Serial.println(F(" - - - Reset KWPReceiveBlock: s={0x55,0,0}, size=3, recvcount=1"));
 
           timeout = millis() + timeout_to_add;
-          Serial.print(F(" - KWPReceiveBlock info: Added timeout. ReceiveCount: "));
-          Serial.print((uint8_t)recvcount);
-          Serial.print(F(". Processed data: "));
-          Serial.print((uint8_t)data, HEX);
-          Serial.print(F(". ACK compl: "));
-          Serial.print(((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)));
-          Serial.print(F(". Iteration: "));
-          Serial.print(temp_iteration_counter);
+          //Serial.print(F(" - KWPReceiveBlock info: Added timeout. ReceiveCount: "));
+          //Serial.print((uint8_t)recvcount);
+          //Serial.print(F(". Processed data: "));
+          //Serial.print((uint8_t)data, HEX);
+          //Serial.print(F(". ACK compl: "));
+          //Serial.print(((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)));
+          //Serial.print(F(". Iteration: "));
+          //Serial.print(temp_iteration_counter);
         }
         else if (data == 0xFF)
         {
           temp_0x0F_counter = 0;
-          Serial.println(F(" - - - Expected, skipping. Maybe beginning of COM ERROR"));
+          //Serial.println(F(" - - - Expected, skipping. Maybe beginning of COM ERROR"));
         }
         else if (data == 0x0F)
         {
           if (temp_0x0F_counter >= 1)
           {
-            Serial.println(F(" - - - Expected, acknowledge"));
+            //Serial.println(F(" - - - Expected, acknowledge"));
             obdWrite(data ^ 0xFF);
             timeout = millis() + timeout_to_add;
-            Serial.print(F(" - KWPReceiveBlock info: Added timeout. ReceiveCount: "));
-            Serial.print((uint8_t)recvcount);
-            Serial.print(F(". Processed data: "));
-            Serial.print((uint8_t)data, HEX);
-            Serial.print(F(". ACK compl: "));
-            Serial.print(((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)));
-            Serial.print(F(". Iteration: "));
-            Serial.print(temp_iteration_counter);
+            //Serial.print(F(" - KWPReceiveBlock info: Added timeout. ReceiveCount: "));
+            //Serial.print((uint8_t)recvcount);
+            //Serial.print(F(". Processed data: "));
+            //Serial.print((uint8_t)data, HEX);
+            //Serial.print(F(". ACK compl: "));
+            //Serial.print(((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)));
+            //Serial.print(F(". Iteration: "));
+            //Serial.print(temp_iteration_counter);
             temp_0x0F_counter = 0;
           }
           else
@@ -580,7 +580,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         }
         else
         {
-          Serial.println(F(" - - - Unknown data sent by ECU! Trying to ignore and NOT send an ACK"));
+          //Serial.println(F(" - - - Unknown data sent by ECU! Trying to ignore and NOT send an ACK"));
           temp_0x0F_counter = 0;
         }
         continue;
@@ -747,7 +747,7 @@ bool KWPReceiveAckBlock()
  */
 bool readConnectBlocks(bool initialization_phase = false)
 {
-  debugln(F(" - Readconnectblocks"));
+  //debugln(F(" - Readconnectblocks"));
 
   String info;
   while (true)
@@ -773,7 +773,7 @@ bool readConnectBlocks(bool initialization_phase = false)
     if (!KWPSendAckBlock())
       return false;
   }
-  debugstrnum(F("label = "), info);
+  //debugstrnum(F("label = "), info);
   return true;
 }
 
@@ -838,12 +838,11 @@ bool obd_connect()
       break;
   }
 
-  obd.begin(baud_rate); // 9600 for 0x01, 10400 for other addresses, 1200 for very old ECU < 1996
   display_statusbar();
   debugln(F("Init "));
   lcd_print(0, 1, F("Init"), 16);
+  obd.begin(baud_rate); // 9600 for 0x01, 10400 for other addresses, 1200 for very old ECU < 1996
   KWP5BaudInit(addr_selected);
-  display_statusbar();
 
   char response[3] = {0, 0, 0}; // Response should be (0x55, 0x01, 0x8A)base=16 = (85 1 138)base=2
   int response_size = 3;
@@ -889,7 +888,7 @@ bool obd_connect()
   // display_statusbar();
 
   // debugln(F("KWP5BaudInit DONE"));
-  lcd_print(0, 1, "Read ECU data...");
+  //lcd_print(0, 1, "Read ECU data...");
   // debugln(F("ReadConnectBlocks"));
   if (!readConnectBlocks(true))
   {
