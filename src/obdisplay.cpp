@@ -204,21 +204,6 @@ bool fuel_per_100km_updated = false;
 float fuel_per_hour = 0;
 bool fuel_per_hour_updated = false;
 
-void reset_variables()
-{
-  block_counter = 0;
-  connected = false;
-  connect_time_start = 0;
-  odometer_start = 0;
-  fuel_level_start = 0;
-  menu = 0;
-  menu_switch = false;
-  button_read_time = 0;
-  addr_selected = 0x00;
-  screen_current = 0;
-  menu_current = 0;
-}
-
 // Serial debug
 #if DEBUG == 1 // Compile Serial
 #define debug(in) Serial.print(in)
@@ -624,8 +609,6 @@ void display_menu_cockpit(bool force_update = false)
   switch (addr_selected)
   {
   case ADDR_ENGINE:
-    lcd_print(0, 0, voltage);
-    lcd_print(0, 1, tb_angle);
     switch (menu_cockpit_screen)
     {
     case 0:
@@ -845,33 +828,31 @@ void compute_values()
 }
 
 // --------------------------------------------------------------------------------------------------
-//                            SERIAL MONITOR DEBUG CODE
+//                            OBD CODE
 // --------------------------------------------------------------------------------------------------
 
-void serial_print_kwp_handshake_error(char response[3])
+void disconnect()
 {
-}
-
-void serial_print_disconnected()
-{
+  obd.end();
   debug(F("Disconnected. Block counter: "));
   debug(block_counter);
   debug(F(". Connected: "));
   debug(connected);
   debug(F(". Available: "));
   debugln(obd.available());
-}
 
-// --------------------------------------------------------------------------------------------------
-//                            OBD CODE
-// --------------------------------------------------------------------------------------------------
+  block_counter = 0;
+  connected = false;
+  connect_time_start = 0;
+  odometer_start = 0;
+  fuel_level_start = 0;
+  menu = 0;
+  menu_switch = false;
+  button_read_time = 0;
+  addr_selected = 0x00;
+  screen_current = 0;
+  menu_current = 0;
 
-void disconnect()
-{
-  serial_print_disconnected();
-
-  obd.end();
-  reset_variables();
   delay(2222);
   lcd_print(0, 1, "Disconnected", 16);
   delay(1222);
@@ -899,13 +880,13 @@ void obdWrite(uint8_t data)
   switch (baud_rate)
   {
   case 1200:
-    to_delay = 130;
+    to_delay = 25;
     break;
   case 2400:
-    to_delay = 60;
+    to_delay = 20;
     break;
   case 4800:
-    to_delay = 30;
+    to_delay = 15;
     break;
   case 9600:
     to_delay = 10;
@@ -1146,13 +1127,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
   {
     while (obd.available())
     {
-      if (temp_iteration_counter == recvcount)
-      {
-        debug(F("      Iter: "));
-        debug(temp_iteration_counter);
-        debug(F(" receivecount: "));
-        debugln(recvcount);
-      }
+
       data = obdRead();
       if (data == -1)
       {
@@ -1224,19 +1199,19 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
       if (((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)))
       {
         obdWrite(data ^ 0xFF); // send complement ack
-        //delay(25);
-        // uint8_t echo = obdRead();
-        // if (echo != (data ^ 0xFF))
+        // delay(25);
+        //  uint8_t echo = obdRead();
+        //  if (echo != (data ^ 0xFF))
         //{
-        //   if (debug_mode_enabled)
-        //   {
-        //     debug(F("ERROR: invalid echo "));
-        //     debughexln(echo);
-        //   }
-        //  errorData++;
-        //  If ECHO is wrong just keep going
-        //  return false;
-        //}
+        //    if (debug_mode_enabled)
+        //    {
+        //      debug(F("ERROR: invalid echo "));
+        //      debughexln(echo);
+        //    }
+        //   errorData++;
+        //   If ECHO is wrong just keep going
+        //   return false;
+        // }
       }
       timeout = millis() + timeout_to_add;
 
