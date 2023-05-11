@@ -17,19 +17,20 @@ Ignore compile warnings.
 /* --------------------------EDIT THE FOLLOWING TO YOUR LIKING-------------------------------------- */
 
 /* Config */
-#define DEBUG 1                  // 1 = enable Serial.print
+#define DEBUG 0                  // 1 = enable Serial.print
 #define ECU_TIMEOUT 1300         // Most commonly is 1100ms
 #define DISPLAY_FRAME_LENGTH 333 // Length of 1 frame in ms
 #define DISPLAY_MAX_X 16
 #define DISPLAY_MAX_Y 2
-#define PIN_RX 3 // Receive
-#define PIN_TX 2 // Transmit
 uint8_t simulation_mode_active = false;
 #define BUTTON_RIGHT(in) (in < 60)
 #define BUTTON_UP(in) (in >= 60 && in < 200)
 #define BUTTON_DOWN(in) (in >= 200 && in < 400)
 #define BUTTON_LEFT(in) (in >= 400 && in < 600)
 #define BUTTON_SELECT(in) (in >= 600 && in < 800)
+
+uint8_t pin_rx = 3; // Receive // Black
+uint8_t pin_tx = 2; // Transmit // White
 
 /* ECU Addresses. See info.txt in root directory for details on the values of each group. */
 const uint8_t ADDR_ENGINE = 0x01;
@@ -49,7 +50,7 @@ const char CHAR_NO = 'N';
 char STRING_ERR[] = "ERR";
 
 // Backend
-NewSoftwareSerial obd(PIN_RX, PIN_TX, false); // rx, tx, inverse logic = false
+NewSoftwareSerial obd(pin_rx, pin_tx, false); // rx, tx, inverse logic = false
 uint32_t connect_time_start = millis();
 uint16_t timeout_to_add = 1100; // Wikipedia
 uint16_t button_timeout = 222;
@@ -849,19 +850,6 @@ void compute_values()
 
 void serial_print_kwp_handshake_error(char response[3])
 {
-  debug(F("Handshake error expected ["));
-  debughex(0x55);
-  debug(F(" "));
-  debughex(0x01);
-  debug(F(" "));
-  debughex(0x8A);
-  debug(F("] got ["));
-  debughex((uint8_t)response[0]);
-  debug(F(" "));
-  debughex((uint8_t)response[1]);
-  debug(F(" "));
-  debughex((uint8_t)response[2]);
-  debugln(F("]"));
 }
 
 void serial_print_disconnected()
@@ -960,10 +948,10 @@ void send5baud(uint8_t data)
 {
   // // 1 start bit, 7 data bits, 1 parity, 1 stop bit
 #define bitcount 10
-  uint8_t bits[bitcount];
-  uint8_t even = 1;
-  uint8_t bit;
-  for (uint8_t i = 0; i < bitcount; i++)
+  byte bits[bitcount];
+  byte even = 1;
+  byte bit;
+  for (int i = 0; i < bitcount; i++)
   {
     bit = 0;
     if (i == 0)
@@ -983,7 +971,7 @@ void send5baud(uint8_t data)
     bits[i] = bit;
   }
   // now send bit stream
-  for (uint8_t i = 0; i < bitcount + 1; i++)
+  for (int i = 0; i < bitcount + 1; i++)
   {
     if (i != 0)
     {
@@ -995,12 +983,12 @@ void send5baud(uint8_t data)
     if (bits[i] == 1)
     {
       // high
-      digitalWrite(PIN_TX, HIGH);
+      digitalWrite(pin_tx, HIGH);
     }
     else
     {
       // low
-      digitalWrite(PIN_TX, LOW);
+      digitalWrite(pin_tx, LOW);
     }
   }
   obd.flush();
@@ -1087,9 +1075,7 @@ bool KWPSendAckBlock()
   buf[1] = block_counter;
   buf[2] = 0x09;
   buf[3] = 0x03;
-  if (!KWPSendBlock(buf, 4))
-    return false;
-  return true;
+  return (KWPSendBlock(buf, 4));
 }
 
 /**
@@ -1140,7 +1126,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
 {
   bool ackeachbyte = false;
   uint8_t data = 0;
-  uint8_t recvcount = 0;
+  int recvcount = 0;
   if (size == 0)
     ackeachbyte = true;
 
@@ -1154,7 +1140,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
     delay(2000);
     return false;
   }
-  uint32_t timeout = millis() + timeout_to_add;
+  unsigned long timeout = millis() + timeout_to_add;
   uint16_t temp_iteration_counter = 0;
   while ((recvcount == 0) || (recvcount != size))
   {
@@ -1238,7 +1224,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
       if (((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)))
       {
         obdWrite(data ^ 0xFF); // send complement ack
-        delay(25);
+        //delay(25);
         // uint8_t echo = obdRead();
         // if (echo != (data ^ 0xFF))
         //{
@@ -1372,7 +1358,7 @@ bool readConnectBlocks(bool initialization_phase = false)
   {
     int size = 0;
     char s[64];
-    if (!(KWPReceiveBlock(s, 64, size)))
+    if (!(KWPReceiveBlock(s, 64, size, -1, initialization_phase)))
       return false;
     if (size == 0)
       return false;
@@ -2241,13 +2227,45 @@ bool obd_connect()
 
   char response[3] = {0, 0, 0}; // Response should be (0x55, 0x01, 0x8A)base=16 = (85 1 138)base=2
   int response_size = 3;
-  if (!KWPReceiveBlock(response, 3, response_size, -1, true) & ((((uint8_t)response[0]) != 0x55) || (((uint8_t)response[1]) != 0x01) || (((uint8_t)response[2]) != 0x8A)))
+  if (!KWPReceiveBlock(response, 3, response_size, -1, true))
   {
-    serial_print_kwp_handshake_error(response);
+    debug(F("Handshake error expected ["));
+    debughex(0x55);
+    debug(F(" "));
+    debughex(0x01);
+    debug(F(" "));
+    debughex(0x8A);
+    debug(F("] got ["));
+    debughex((uint8_t)response[0]);
+    debug(F(" "));
+    debughex((uint8_t)response[1]);
+    debug(F(" "));
+    debughex((uint8_t)response[2]);
+    debugln(F("]"));
     lcd_print(0, 1, "ECU: " + String((uint8_t)response[0], HEX) + " " + String((uint8_t)response[1], HEX) + " " + String((uint8_t)response[2], HEX), 16);
     delay(ECU_TIMEOUT);
     return false;
   }
+  if (((((uint8_t)response[0]) != 0x55) || (((uint8_t)response[1]) != 0x01) || (((uint8_t)response[2]) != 0x8A)))
+  {
+    debug(F("Handshake error expected ["));
+    debughex(0x55);
+    debug(F(" "));
+    debughex(0x01);
+    debug(F(" "));
+    debughex(0x8A);
+    debug(F("] got ["));
+    debughex((uint8_t)response[0]);
+    debug(F(" "));
+    debughex((uint8_t)response[1]);
+    debug(F(" "));
+    debughex((uint8_t)response[2]);
+    debugln(F("]"));
+    lcd_print(0, 1, "ECU: " + String((uint8_t)response[0], HEX) + " " + String((uint8_t)response[1], HEX) + " " + String((uint8_t)response[2], HEX), 16);
+    delay(ECU_TIMEOUT);
+    return false;
+  }
+
   display_statusbar();
 
   debugln(F("KWP5BaudInit DONE"));
@@ -2411,8 +2429,8 @@ void setup()
   lcd.begin(DISPLAY_MAX_X, DISPLAY_MAX_Y);
 
   // Pins
-  pinMode(PIN_TX, OUTPUT); // TX
-  digitalWrite(PIN_TX, HIGH);
+  pinMode(pin_tx, OUTPUT); // TX white
+  digitalWrite(pin_tx, HIGH);
 
   // Startup animation
   lcd.clear();
