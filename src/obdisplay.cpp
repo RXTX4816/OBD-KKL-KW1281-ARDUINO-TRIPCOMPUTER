@@ -51,6 +51,7 @@ char STRING_ERR[] = "ERR";
 uint32_t endTime = 0;
 uint16_t ECU_receive_counter = 0;
 uint16_t ECU_transmit_counter = 0;
+uint16_t ECU_anomaly_counter = 0;
 
 // Backend
 NewSoftwareSerial obd(pin_rx, pin_tx, false); // rx, tx, inverse logic = false
@@ -514,6 +515,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
     debugstrnumln(F("source ="), source);
     debugstrnumln(F("ECU_receive_counter ="), ECU_receive_counter);
     debugstrnumln(F("ECU_transmit_counter ="), ECU_transmit_counter);
+    debugstrnumln(F("ECU_anomaly_counter ="), ECU_anomaly_counter);
     size_t array_length = sizeof(s) / sizeof(s[0]);
     debugstrnumln(F("s[] length ="), array_length);
     debug(F("s[] = "));
@@ -548,6 +550,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         debugstrnumln(F("source ="), source);
         debugstrnumln(F("ECU_receive_counter ="), ECU_receive_counter);
         debugstrnumln(F("ECU_transmit_counter ="), ECU_transmit_counter);
+        debugstrnumln(F("ECU_anomaly_counter ="), ECU_anomaly_counter);
         debugstrnumln(F("initialization_phase ="), initialization_phase);
         size_t array_length = sizeof(s) / sizeof(s[0]);
         debugstrnumln(F("s[] length ="), array_length);
@@ -575,7 +578,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         // Serial.print(recvcount);
         // Serial.print(F(" data:0x"));
         // Serial.println(data, HEX);
-
+        ECU_anomaly_counter++;
         if (data == 0x55)
         {
           temp_0x0F_counter = 0;
@@ -660,6 +663,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
           debugstrnumln(F("source ="), source);
           debugstrnumln(F("ECU_receive_counter ="), ECU_receive_counter);
           debugstrnumln(F("ECU_transmit_counter ="), ECU_transmit_counter);
+          debugstrnumln(F("ECU_anomaly_counter ="), ECU_anomaly_counter);
           debugstrnumln(F("initialization_phase ="), initialization_phase);
           size_t array_length = sizeof(s) / sizeof(s[0]);
           debugstrnumln(F("s[] length ="), array_length);
@@ -723,6 +727,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
             debugstrnumln(F("source ="), source);
             debugstrnumln(F("ECU_receive_counter ="), ECU_receive_counter);
             debugstrnumln(F("ECU_transmit_counter ="), ECU_transmit_counter);
+            debugstrnumln(F("ECU_anomaly_counter ="), ECU_anomaly_counter);
             debugstrnumln(F("initialization_phase ="), initialization_phase);
             size_t array_length = sizeof(s) / sizeof(s[0]);
             debugstrnumln(F("s[] length ="), array_length);
@@ -737,7 +742,9 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
             }
             debugln(F("------"));
             return false;
-          } else {
+          }
+          else
+          {
             // Maybe after error handling.
             block_counter = 0x00;
           }
@@ -770,6 +777,7 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
       debugstrnumln(F("source ="), source);
       debugstrnumln(F("ECU_receive_counter ="), ECU_receive_counter);
       debugstrnumln(F("ECU_transmit_counter ="), ECU_transmit_counter);
+      debugstrnumln(F("ECU_anomaly_counter ="), ECU_anomaly_counter);
       size_t array_length = sizeof(s) / sizeof(s[0]);
       debugstrnumln(F("s[] length ="), array_length);
       debug(F("s[] = "));
@@ -884,6 +892,7 @@ bool readConnectBlocks(bool initialization_phase = false)
       debugstrnumln(F("source ="), -1);
       debugstrnumln(F("ECU_receive_counter ="), ECU_receive_counter);
       debugstrnumln(F("ECU_transmit_counter ="), ECU_transmit_counter);
+      debugstrnumln(F("ECU_anomaly_counter ="), ECU_anomaly_counter);
       size_t array_length = sizeof(s) / sizeof(s[0]);
       debugstrnumln(F("s[] length ="), array_length);
       debug(F("s[] = "));
@@ -910,6 +919,7 @@ bool readConnectBlocks(bool initialization_phase = false)
       debugstrnumln(F("source ="), -1);
       debugstrnumln(F("ECU_receive_counter ="), ECU_receive_counter);
       debugstrnumln(F("ECU_transmit_counter ="), ECU_transmit_counter);
+      debugstrnumln(F("ECU_anomaly_counter ="), ECU_anomaly_counter);
       size_t array_length = sizeof(s) / sizeof(s[0]);
       debugstrnumln(F("s[] length ="), array_length);
       debug(F("s[] = "));
@@ -937,6 +947,7 @@ bool readConnectBlocks(bool initialization_phase = false)
       debugstrnumln(F("source ="), -1);
       debugstrnumln(F("ECU_receive_counter ="), ECU_receive_counter);
       debugstrnumln(F("ECU_transmit_counter ="), ECU_transmit_counter);
+      debugstrnumln(F("ECU_anomaly_counter ="), ECU_anomaly_counter);
       size_t array_length = sizeof(s) / sizeof(s[0]);
       debugstrnumln(F("s[] length ="), array_length);
       debug(F("s[] = "));
@@ -1279,6 +1290,7 @@ bool connect()
 
   ECU_receive_counter = 0;
   ECU_transmit_counter = 0;
+  ECU_anomaly_counter = 0;
   if (!obd_connect())
   {
     disconnect();
