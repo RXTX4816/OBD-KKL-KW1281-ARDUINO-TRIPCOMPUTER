@@ -1306,11 +1306,12 @@ bool readConnectBlocks(bool initialization_phase = false)
       return false;
     if (size == 0)
       return false;
-    if (s[2] == '\x09')
+    if (s[2] == 0x09)
       break;
-    if (s[2] != '\xF6')
+    if (s[2] != 0xF6)
     {
-      debugln(F(" - Readconnectblocks ERROR: unexpected answer"));
+      debug(F(" - Readconnectblocks ERROR: unexpected answer: "));
+      debugstrnumhexln(F("should be 0xF6 but is "), s[2]);
 
       lcd_print(0, 1, "ERR: s[2]!=xF6");
       delay(2000);
@@ -1376,7 +1377,7 @@ bool readSensors(int group)
       return false;
     }
   }
-  if (s[2] != '\xe7')
+  if (s[2] != 0xE7)
   {
     debugln(F("ERROR: invalid answer 0xE7"));
     lcd_print(0, 1, "ERR: s[2]!=xE7");
