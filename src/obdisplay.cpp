@@ -17,7 +17,7 @@ Ignore compile warnings.
 /* --------------------------EDIT THE FOLLOWING TO YOUR LIKING-------------------------------------- */
 
 /* Config */
-#define DEBUG 0                  // 1 = enable Serial.print
+#define DEBUG 1                  // 1 = enable Serial.print
 #define ECU_TIMEOUT 1300         // Most commonly is 1100ms
 #define DISPLAY_FRAME_LENGTH 333 // Length of 1 frame in ms
 #define DISPLAY_MAX_X 16
@@ -222,6 +222,12 @@ bool fuel_per_hour_updated = false;
     debug(str);                 \
     debugln(num);               \
   } while (0)
+#define debugstrnumhex(str, num) \
+  do                             \
+  {                              \
+    debug(str);                  \
+    debughex(num);               \
+  } while (0)
 #define debugstrnumhexln(str, num) \
   do                               \
   {                                \
@@ -235,6 +241,7 @@ bool fuel_per_hour_updated = false;
 #define debughexln(in)
 #define debugstrnum(str, num)
 #define debugstrnumln(str, num)
+#define debugstrnumhex(str, num)
 #define debugstrnumhexln(str, num)
 #endif
 
@@ -256,38 +263,11 @@ uint8_t count_digit(int n)
 }
 
 /**
- * @brief Converts a boolean to a String
- *
- * @param value Boolean
- * @return String Y or N
- */
-String convert_bool_string(bool value)
-{
-  if (value)
-  {
-    return String(CHAR_YES);
-  }
-  else
-  {
-    return String(CHAR_NO);
-  }
-}
-char convert_bool_char(bool value)
-{
-  if (value)
-  {
-    return CHAR_YES;
-  }
-  else
-    return CHAR_NO;
-}
-
-/**
  * Increment block counter. Min: 0, Max: 254.
  * Counts the current block number and is passed in each block.
  * A wrong block counter will result in communication errors.
  */
-void increase_block_counter()
+void increment_block_counter()
 {
   if (block_counter >= 255)
   {
@@ -403,7 +383,7 @@ void lcd_print(uint8_t x, uint8_t y, float floating_number, uint8_t width = 0)
 
 void lcd_print_bool(uint8_t x, uint8_t y, bool boolean, uint8_t width = 0)
 {
-  lcd_print(x, y, convert_bool_string(boolean), width);
+  lcd_print(x, y, String(boolean), width);
 }
 
 void lcd_print_cockpit(uint8_t x, uint8_t y, String s, uint8_t width, bool &updated, bool force_update = false)
@@ -622,14 +602,14 @@ void display_menu_cockpit(bool force_update = false)
     case 2:
       if (error_bits_updated || force_update)
       {
-        bits_as_string[0] = convert_bool_char(exhaust_gas_recirculation_error);
-        bits_as_string[1] = convert_bool_char(oxygen_sensor_heating_error);
-        bits_as_string[2] = convert_bool_char(oxgen_sensor_error);
-        bits_as_string[3] = convert_bool_char(air_conditioning_error);
-        bits_as_string[4] = convert_bool_char(secondary_air_injection_error);
-        bits_as_string[5] = convert_bool_char(evaporative_emissions_error);
-        bits_as_string[6] = convert_bool_char(catalyst_heating_error);
-        bits_as_string[7] = convert_bool_char(catalytic_converter);
+        bits_as_string[0] = exhaust_gas_recirculation_error;
+        bits_as_string[1] = oxygen_sensor_heating_error;
+        bits_as_string[2] = oxgen_sensor_error;
+        bits_as_string[3] = air_conditioning_error;
+        bits_as_string[4] = secondary_air_injection_error;
+        bits_as_string[5] = evaporative_emissions_error;
+        bits_as_string[6] = catalyst_heating_error;
+        bits_as_string[7] = catalytic_converter;
       }
 
       lcd_print_cockpit(0, 0, bits_as_string, 7, error_bits_updated, force_update);
@@ -805,7 +785,7 @@ void simulate_values_helper(uint16_t &val, uint8_t amount_to_change, bool &val_s
 }
 void simulate_values()
 {
-  increase_block_counter();                                                                   // Simulate some values
+  increment_block_counter();                                                                  // Simulate some values
   simulate_values_helper(vehicle_speed, 1, vehicle_speed_switch, vehicle_speed_updated, 200); // Vehicle speed
   simulate_values_helper(engine_rpm, 87, engine_rpm_switch, engine_rpm_updated, 7100);        // Engine RPM
   simulate_values_helper(coolant_temp, 1, coolant_temp_switch, coolant_temp_updated, 160);    // Coolant temperature
@@ -871,25 +851,23 @@ int available()
  *
  * @param data The data to send.
  */
-void obdWrite(uint8_t data)
+void OBD_write(uint8_t data)
 {
-  debug(F("->MCU: "));
-  debughexln(data);
+  // debug(F("->MCU: "));
+  // debughexln(data);
 
   uint8_t to_delay = 5;
   switch (baud_rate)
   {
   case 1200:
-    to_delay = 25;
-    break;
   case 2400:
-    to_delay = 20;
-    break;
   case 4800:
-    to_delay = 15;
+    to_delay = 15; // For old ECU's
     break;
   case 9600:
     to_delay = 10;
+    break;
+  default:
     break;
   }
 
@@ -902,20 +880,20 @@ void obdWrite(uint8_t data)
  *
  * @return uint8_t The incoming byte or -1 if timeout
  */
-uint8_t obdRead()
+int16_t OBD_read()
 {
   unsigned long timeout = millis() + timeout_to_add;
   while (!obd.available())
   {
     if (millis() >= timeout)
     {
-      debugln(F("ERROR: obdRead() timeout obd.available() = 0."));
+      debugln(F("ERROR: OBD_read() timeout obd.available() = 0."));
       return -1;
     }
   }
-  uint8_t data = obd.read();
-  debug(F("ECU: "));
-  debughexln(data);
+  int16_t data = obd.read();
+  // debug(F("ECU: "));
+  // debughexln(data);
 
   return data;
 }
@@ -925,7 +903,7 @@ uint8_t obdRead()
  * 5Bd, 7O1
  * @param data Which ECU Address to wake up.
  */
-void send5baud(uint8_t data)
+void KWP_5baud_send(uint8_t data)
 {
   // // 1 start bit, 7 data bits, 1 parity, 1 stop bit
 #define bitcount 10
@@ -978,11 +956,11 @@ void send5baud(uint8_t data)
 /**
  * Helper method to send the addr as 5 baud to the ECU
  */
-bool KWP5BaudInit(uint8_t addr)
+bool KWP_5baud_init(uint8_t addr)
 {
   debug(F("5 baud: (0)"));
-  send5baud(addr);
-  debugln(F(" (9) END"));
+  KWP_5baud_send(addr);
+  // debugln(F(" (9) END"));
   return true;
 }
 
@@ -994,37 +972,30 @@ bool KWP5BaudInit(uint8_t addr)
  * @return true If no errors occured, will resume
  * @return false If errors occured, will disconnect
  */
-bool KWPSendBlock(char *s, int size)
+bool KWP_send_block(uint8_t *s, int size)
 {
-  debug(F("---KWPSend size = "));
-  debug(size);
-  debug(F(" block counter = "));
-  debugln(block_counter);
-  debug(F("To send: "));
+  debug(F("Sending "));
   for (uint8_t i = 0; i < size; i++)
   {
-    uint8_t data = s[i];
-    debughex(data);
-    debug(" ");
+    debughex(s[i]);
+    debug(F(" "));
   }
   debugln();
 
   for (uint8_t i = 0; i < size; i++)
   {
     uint8_t data = s[i];
-    obdWrite(data);
-    /*uint8_t echo = obdRead(); ???
-    if (data != echo){
-      debugln(F("ERROR: invalid echo"));
-      disconnect();
-      errorData++;
-      return false;
-    }*/
+    OBD_write(data);
+
     if (i < size - 1)
     {
-      uint8_t complement = obdRead();
+      int16_t complement = OBD_read();
+      if (s[2] == 0x06 && s[3] == 0x03 && complement == -1)
+        return true; // KWP manual exit
       if (complement != (data ^ 0xFF))
       {
+        debugstrnumhex(F("MCU: "), data);
+        debugstrnumhex(F(" ECU: "), complement);
         debugln(F("ERROR: invalid complement"));
         lcd_print(0, 1, "ERR: INV COMPL");
         delay(1333);
@@ -1037,7 +1008,7 @@ bool KWPSendBlock(char *s, int size)
       }
     }
   }
-  increase_block_counter();
+  increment_block_counter();
   return true;
 }
 
@@ -1048,49 +1019,31 @@ bool KWPSendBlock(char *s, int size)
  * @return true No errors
  * @return false Errors, disconnect
  */
-bool KWPSendAckBlock()
+bool KWP_send_ACK_block()
 {
-  debugstrnumln(F("---KWPSendAckBlock block counter = "), block_counter);
-  char buf[32];
-  buf[0] = 0x03;
-  buf[1] = block_counter;
-  buf[2] = 0x09;
-  buf[3] = 0x03;
-  return (KWPSendBlock(buf, 4));
+  debugln(F("Sending ACK block"));
+  uint8_t buf[32] = {0x03, block_counter, 0x09, 0x03};
+  return (KWP_send_block(buf, 4));
 }
 
 /**
  * Sends DTC read block and obtains all DTC errors
  */
-bool KWPSendDTCReadBlock()
+bool KWP_send_DTC_read_block()
 {
-  debugstrnumln(F("---KWPSendDTCReadBlock block counter = "), block_counter);
-
-  char s[32];
-  s[0] = 0x03;
-  s[1] = block_counter;
-  s[2] = 0x07;
-  s[3] = 0x03;
-  if (!KWPSendBlock(s, 4))
-    return false;
-  return true;
+  debugln(F("Sending DTC read block"));
+  uint8_t s[32] = {0x03, block_counter, 0x07, 0x03};
+  return KWP_send_block(s, 4);
 }
 
 /**
  * Sends DTC delete block to clear all DTC errors
  */
-bool KWPSendDTCDeleteBlock()
+bool KWP_send_DTC_delete_block()
 {
-  debugstrnumln(F("---KWPSendDTCDeleteBlock block counter = "), block_counter);
-
-  char s[32];
-  s[0] = 0x03;
-  s[1] = block_counter;
-  s[2] = 0x05;
-  s[3] = 0x03;
-  if (!KWPSendBlock(s, 4))
-    return false;
-  return true;
+  debugln(F("Sending DTC delete block"));
+  uint8_t s[32] = {0x03, block_counter, 0x05, 0x03};
+  return KWP_send_block(s, 4);
 }
 
 /**
@@ -1103,16 +1056,16 @@ bool KWPSendDTCDeleteBlock()
  * @return true No errors
  * @return false Errors
  */
-bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool initialization_phase = false)
+bool KWP_receive_block(uint8_t s[], int maxsize, int &size, int source = -1, bool initialization_phase = false)
 {
   bool ackeachbyte = false;
-  uint8_t data = 0;
+  int16_t data = 0;
   int recvcount = 0;
   if (size == 0)
     ackeachbyte = true;
 
-  debugstrnum(F(" - KWPReceiveBlock. Size: "), size);
-  debugstrnum(F(". Block counter: "), block_counter);
+  // debugstrnum(F(" - KWP_receive_block. Size: "), size);
+  // debugstrnum(F(". Block counter: "), block_counter);
 
   if (size > maxsize)
   {
@@ -1123,12 +1076,13 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
   }
   unsigned long timeout = millis() + timeout_to_add;
   uint16_t temp_iteration_counter = 0;
+  uint8_t temp_0x0F_counter = 0; // For communication errors in startup procedure (1200 baud)
   while ((recvcount == 0) || (recvcount != size))
   {
     while (obd.available())
     {
 
-      data = obdRead();
+      data = OBD_read();
       if (data == -1)
       {
         debugln(F(" - KWPReceiveBlock error: (Available=0) or empty buffer!"));
@@ -1138,12 +1092,52 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
       }
       s[recvcount] = data;
       recvcount++;
+
+      /* BAUD 1200 fix, may be useful for other bauds if com errors occur at sync bytes init */
+      if ((baud_rate == 1200 || baud_rate == 4800) && initialization_phase && (recvcount > maxsize))
+      {
+        if (data == 0x55)
+        {
+          temp_0x0F_counter = 0; // Reset
+          s[0] = 0x00;
+          s[1] = 0x00;
+          s[2] = 0x00;
+          size = 3;
+          recvcount = 1;
+          s[0] = 0x55;
+          timeout = millis() + timeout_to_add;
+        }
+        else if (data == 0xFF)
+        {
+          temp_0x0F_counter = 0; // Skip
+        }
+        else if (data == 0x0F)
+        {
+          if (temp_0x0F_counter >= 1) // ACK
+          {
+            OBD_write(data ^ 0xFF);
+            timeout = millis() + timeout_to_add;
+
+            temp_0x0F_counter = 0;
+          }
+          else // Skip
+          {
+            temp_0x0F_counter++;
+          }
+        }
+        else
+        {
+          temp_0x0F_counter = 0; // Skip
+        }
+        continue;
+      }
+
       if ((size == 0) && (recvcount == 1))
       {
         if (source == 1 && (data != 15 || data != 3) && obd.available())
         {
           lcd_print(0, 1, "WARN block length");
-          debugln(F(" - KWPReceiveBlock warn: Communication error occured, check block length!"));
+          debugln(F(" - KWP_receive_block warn: Communication error occured, check block length!"));
           com_error = true;
           size = 6;
         }
@@ -1154,8 +1148,8 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         if (size > maxsize)
         {
 
-          debugln(F(" - KWPReceiveBlock error: Invalid maxsize"));
-          lcd_print(0, 1, "ERR:size>maxsize");
+          debugln(F(" - KWP_receive_block error: Invalid maxsize2"));
+          lcd_print(0, 1, "ER2:siz2>maxsiz2");
           delay(2000);
           return false;
         }
@@ -1184,46 +1178,36 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
       {
         if (data != block_counter)
         {
-          if (initialization_phase)
+          if (data == 0x00)
+            block_counter = 0; // Reset BC because probably com error occured in init phase. Part of 1200BAUD fix
+          else
           {
-            lcd_print(0, 1, "ERR:size>maxsize");
+
+            lcd_print(0, 1, "ER:block counter");
             delay(1000);
             lcd_print(0, 1, "Exp:" + String(data) + " Is:" + String(block_counter) + "         ");
-            delay(3333);
+            delay(2222);
+            debugstrnum(F(" - KWP_receive_block error: Invalid block counter. Expected: "), block_counter);
+            debugstrnumln(F(" Is: "), data);
+            return false;
           }
-          debugstrnum(F(" - KWPReceiveBlock error: Invalid block counter. Expected: "), (uint8_t)data);
-          debugstrnumln(F(" Is: "), (uint8_t)block_counter);
-          return false;
         }
       }
       if (((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)))
       {
-        obdWrite(data ^ 0xFF); // send complement ack
-        // delay(25);
-        //  uint8_t echo = obdRead();
-        //  if (echo != (data ^ 0xFF))
-        //{
-        //    if (debug_mode_enabled)
-        //    {
-        //      debug(F("ERROR: invalid echo "));
-        //      debughexln(echo);
-        //    }
-        //   errorData++;
-        //   If ECHO is wrong just keep going
-        //   return false;
-        // }
+        OBD_write(data ^ 0xFF); // send complement ack
       }
       timeout = millis() + timeout_to_add;
 
-      debugstrnum(F(" - KWPReceiveBlock: Added timeout. ReceiveCount: "), (uint8_t)recvcount);
-      debug(F(". Processed data: "));
-      debughex(data);
-      debugstrnumln(F(". ACK compl: "), ((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)));
+      // debugstrnum(F(" - KWP_receive_block: Added timeout. ReceiveCount: "), (uint8_t)recvcount);
+      // debug(F(". Processed data: "));
+      // debughex(data);
+      // debugstrnumln(F(". ACK compl: "), ((!ackeachbyte) && (recvcount == size)) || ((ackeachbyte) && (recvcount < size)));
     }
 
     if (millis() >= timeout)
     {
-      debug(F(" - KWPReceiveBlock: Timeout overstepped on iteration "));
+      debug(F(" - KWP_receive_block: Timeout overstepped on iteration "));
       debug(temp_iteration_counter);
       debug(F(" with receivecount "));
       debugln(recvcount);
@@ -1244,36 +1228,33 @@ bool KWPReceiveBlock(char s[], int maxsize, int &size, int source = -1, bool ini
         lcd_print(0, 1, "Timeout");
       }
       delay(1222);
-      // errorTimeout++;
       return false;
     }
     temp_iteration_counter++;
   }
   // show data
-  debug(F("IN: size = "));
-  debug(size);
-  debug(F(" data = "));
-  for (uint8_t i = 0; i < size; i++)
-  {
-    uint8_t data = s[i];
-    debughex(data);
-    debug(F(" "));
-  }
-  debugln();
+  // debug(F("IN: size = "));
+  // debug(size);
+  // debug(F(" data = "));
+  // for (uint8_t i = 0; i < size; i++)
+  //{
+  //  uint8_t data = s[i];
+  //  debughex(data);
+  //  debug(F(" "));
+  //}
+  // debugln();
 
-  increase_block_counter();
+  increment_block_counter();
   return true;
 }
 
-bool KWPErrorBlock()
+/**
+ * KWP error encountered procedure
+ */
+bool KWP_error_block()
 {
-  // Kommunikationsfehler
-  char s[64];
-  s[0] = 0x03;
-  s[1] = block_counter;
-  s[2] = 0x00;
-  s[3] = 0x03;
-  if (!KWPSendBlock(s, 4))
+  uint8_t s[64] = {0x03, block_counter, 0x00, 0x03};
+  if (!KWP_send_block(s, 4))
   {
     com_error = false;
     return false;
@@ -1281,38 +1262,26 @@ bool KWPErrorBlock()
   block_counter = 0;
   com_error = false;
   int size2 = 0;
-  if (!KWPReceiveBlock(s, 64, size2))
-  {
-    return false;
-  }
-  return true;
+  return KWP_receive_block(s, 64, size2);
 }
 
-bool KWPReceiveAckBlock()
+bool KWP_receive_ACK_block()
 {
   // --------- Expect response acknowledge ----------------
-  char buf[32];
+  uint8_t buf[32];
   int size2 = 0;
-  if (!KWPReceiveBlock(buf, 4, size2))
+  if (!KWP_receive_block(buf, 4, size2))
   {
     return false;
   }
   if (buf[0] != 0x03 || buf[2] != 0x09 || buf[3] != 0x03)
   {
-    debug(F(" - Error receiving ACK procedure got s[0]-s[3]: "));
-    debughex(buf[0]);
-    debug(F(" "));
-    debughex(buf[1]);
-    debug(F(" "));
-    debughex(buf[2]);
-    debug(F(" "));
-    debughex(buf[3]);
-    debugln(F(" should be 03 BC 09 03"));
+    debug(F(" - Error receiving ACK procedure"));
     return false;
   }
   if (com_error)
   {
-    KWPErrorBlock();
+    KWP_error_block();
     return false;
   }
   return true;
@@ -1326,14 +1295,14 @@ bool KWPReceiveAckBlock()
  */
 bool readConnectBlocks(bool initialization_phase = false)
 {
-  debugln(F(" - Readconnectblocks"));
+  // debugln(F(" - Readconnectblocks"));
 
-  String info;
+  // String info;
   while (true)
   {
     int size = 0;
-    char s[64];
-    if (!(KWPReceiveBlock(s, 64, size, -1, initialization_phase)))
+    uint8_t s[64];
+    if (!(KWP_receive_block(s, 64, size, -1, initialization_phase)))
       return false;
     if (size == 0)
       return false;
@@ -1347,12 +1316,12 @@ bool readConnectBlocks(bool initialization_phase = false)
       delay(2000);
       return false;
     }
-    String text = String(s);
-    info += text.substring(3, size - 2);
-    if (!KWPSendAckBlock())
+    // String text = String((char)s);
+    // info += text.substring(3, size - 2);
+    if (!KWP_send_ACK_block())
       return false;
   }
-  debugstrnum(F("label = "), info);
+  // debugstrnum(F("label = "), info);
   return true;
 }
 
@@ -1373,28 +1342,28 @@ bool readSensors(int group)
     unit_temp[i] = "ERR";
   }
 
-  char s[64];
+  uint8_t s[64];
   s[0] = 0x04;
   s[1] = block_counter;
   s[2] = 0x29;
   s[3] = group;
   s[4] = 0x03;
-  if (!KWPSendBlock(s, 5))
+  if (!KWP_send_block(s, 5))
     return false;
   int size = 0;
-  if (!KWPReceiveBlock(s, 64, size, 1))
+  if (!KWP_receive_block(s, 64, size, 1))
   {
     return false;
   }
   if (com_error)
   {
     // Kommunikationsfehler
-    char s[64];
+    uint8_t s[64];
     s[0] = 0x03;
     s[1] = block_counter;
     s[2] = 0x00;
     s[3] = 0x03;
-    if (!KWPSendBlock(s, 4))
+    if (!KWP_send_block(s, 4))
     {
       com_error = false;
       return false;
@@ -1402,14 +1371,14 @@ bool readSensors(int group)
     block_counter = 0;
     com_error = false;
     int size2 = 0;
-    if (!KWPReceiveBlock(s, 64, size2))
+    if (!KWP_receive_block(s, 64, size2))
     {
       return false;
     }
   }
   if (s[2] != '\xe7')
   {
-    debugln(F("ERROR: invalid answer"));
+    debugln(F("ERROR: invalid answer 0xE7"));
     lcd_print(0, 1, "ERR: s[2]!=xE7");
     delay(2000);
     // errorData++;
@@ -2003,17 +1972,6 @@ bool readSensors(int group)
       break;
     }
   }
-  /*if (units.length() != 0) {
-      dtostrf(v, 4, 2, buf);
-      t = String(buf) + " " + units;
-    }
-//    debugln(t);
-
-    //lcd.setCursor(0, idx);
-    //while (t.length() < 20) t += " ";
-    //lcd.print(t);
-  }
-  sensorCounter++;*/
   return true;
 }
 
@@ -2022,16 +1980,13 @@ bool readSensors(int group)
  */
 bool send_ack(bool expect_response_ack = true)
 {
-  if (!KWPSendAckBlock())
+  if (!KWP_send_ACK_block())
     return false;
 
   if (!expect_response_ack)
     return true;
 
-  if (!KWPReceiveAckBlock())
-    return false;
-
-  return true;
+  return KWP_receive_ACK_block();
 }
 
 /**
@@ -2044,24 +1999,24 @@ uint8_t read_DTC_codes()
   debug(F("Read DTC on ADDR 0x"));
   debughexln(addr_selected);
 
-  if (!KWPSendDTCReadBlock())
+  if (!KWP_send_DTC_read_block())
     return false;
 
   reset_dtc_status_errors_array();
   bool all_dtc_errors_received = false;
   uint8_t dtc_errors_received_counter = 0;
-  char s[64];
+  uint8_t s[64];
   int size = 0;
   while (!all_dtc_errors_received)
   {
-    if (!KWPReceiveBlock(s, 64, size, 1))
+    if (!KWP_receive_block(s, 64, size, 1, false))
     {
       return false;
     }
     if (com_error)
     {
       // Kommunikationsfehler
-      KWPErrorBlock();
+      KWP_error_block();
       return false;
     }
 
@@ -2131,10 +2086,7 @@ uint8_t read_DTC_codes()
     }
   }
 
-  if (!KWPSendAckBlock())
-    return false;
-
-  return true;
+  return KWP_send_ACK_block();
 }
 
 /**
@@ -2142,10 +2094,7 @@ uint8_t read_DTC_codes()
  */
 bool delete_DTC_codes()
 {
-  if (!KWPSendDTCDeleteBlock())
-    return false;
-
-  return true;
+  return KWP_send_DTC_delete_block();
 }
 
 /**
@@ -2158,12 +2107,12 @@ bool kwp_exit()
   debugln(F("Manual KWP exit.."));
   // Perform KWP end output block
   delay(15);
-  char s[64];
+  uint8_t s[64];
   s[0] = 0x03;
   s[1] = block_counter;
   s[2] = 0x06;
   s[3] = 0x03;
-  if (!KWPSendBlock(s, 4))
+  if (!KWP_send_block(s, 4))
   {
     debugln(F("KWP exit failed"));
     lcd_print(0, 1, "error!");
@@ -2193,71 +2142,61 @@ bool obd_connect()
       break;
   }
 
-  obd.begin(baud_rate); // 9600 for 0x01, 10400 for other addresses, 1200 for very old ECU < 1996
   display_statusbar();
   debugln(F("Init "));
   lcd_print(0, 1, F("Init"), 16);
-  KWP5BaudInit(addr_selected);
-  display_statusbar();
+  obd.begin(baud_rate); // 9600 for 0x01, 10400 for other addresses, 1200 for very old ECU < 1996
+  KWP_5baud_init(addr_selected);
+  // display_statusbar();
 
-  char response[3] = {0, 0, 0}; // Response should be (0x55, 0x01, 0x8A)base=16 = (85 1 138)base=2
+  uint8_t response[3] = {0, 0, 0}; // Response should be (0x55, 0x01, 0x8A)base=16 = (85 1 138)base=2
   int response_size = 3;
-  if (!KWPReceiveBlock(response, 3, response_size, -1, true))
+  if (!KWP_receive_block(response, 3, response_size, -1, true))
   {
-    debug(F("Handshake error expected ["));
-    debughex(0x55);
-    debug(F(" "));
-    debughex(0x01);
-    debug(F(" "));
-    debughex(0x8A);
-    debug(F("] got ["));
-    debughex((uint8_t)response[0]);
-    debug(F(" "));
-    debughex((uint8_t)response[1]);
-    debug(F(" "));
-    debughex((uint8_t)response[2]);
-    debugln(F("]"));
+    debug(F("Handshake error got "));
+    debugstrnumhex(F(" "), response[0]);
+    debugstrnumhex(F(" "), response[1]);
+    debugstrnumhexln(F(" "), response[2]);
+
     lcd_print(0, 1, "ECU: " + String((uint8_t)response[0], HEX) + " " + String((uint8_t)response[1], HEX) + " " + String((uint8_t)response[2], HEX), 16);
     delay(ECU_TIMEOUT);
     return false;
   }
   if (((((uint8_t)response[0]) != 0x55) || (((uint8_t)response[1]) != 0x01) || (((uint8_t)response[2]) != 0x8A)))
   {
-    debug(F("Handshake error expected ["));
-    debughex(0x55);
-    debug(F(" "));
-    debughex(0x01);
-    debug(F(" "));
-    debughex(0x8A);
-    debug(F("] got ["));
-    debughex((uint8_t)response[0]);
-    debug(F(" "));
-    debughex((uint8_t)response[1]);
-    debug(F(" "));
-    debughex((uint8_t)response[2]);
-    debugln(F("]"));
+    debug(F("Handshake error got "));
+    debugstrnumhex(F(" "), response[0]);
+    debugstrnumhex(F(" "), response[1]);
+    debugstrnumhexln(F(" "), response[2]);
     lcd_print(0, 1, "ECU: " + String((uint8_t)response[0], HEX) + " " + String((uint8_t)response[1], HEX) + " " + String((uint8_t)response[2], HEX), 16);
     delay(ECU_TIMEOUT);
     return false;
   }
 
-  display_statusbar();
+  // display_statusbar();
 
-  debugln(F("KWP5BaudInit DONE"));
-  lcd_print(0, 1, "Read ECU data...");
-  debugln(F("ReadConnectBlocks"));
-  if (!readConnectBlocks(true))
+  // debugln(F("KWP_5baud_init DONE"));
+  // lcd_print(0, 1, "Read ECU data...");
+  // debugln(F("ReadConnectBlocks"));
+  if (!readConnectBlocks(false))
   {
+    debugln(F(" "));
+    debugln(F("------"));
+    debugln(F("ECU connection failed"));
+    debugln(F("------"));
     display_statusbar();
-    lcd_print(0, 1, "Read ECU data..N");
+    lcd_print(0, 1, "Read connect ERR");
     return false;
   }
+  debugln(F(" "));
+  debugln(F("------"));
   debugln(F("ECU connected"));
+  debugln(F("------"));
 
   connected = true;
   display_statusbar();
   lcd_print(1, 1, F("ECU connected"), 16);
-  display_statusbar();
+  //display_statusbar();
   return true;
 }
 
@@ -2369,7 +2308,6 @@ bool connect()
   connect_helper_bool(userinput_ecu_address, addr_selected, ADDR_ENGINE, ADDR_INSTRUMENTS);
 
   debugln(F("Saved configuration: "));
-  debugstrnumln(F("--- DEBUG "), DEBUG);
   debugstrnumln(F("--- SIMULATION "), simulation_mode_active);
   debugstrnumln(F("--- baud "), baud_rate);
   debugstrnumhexln(F("--- addr "), addr_selected);
