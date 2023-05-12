@@ -1094,7 +1094,7 @@ bool KWP_receive_block(uint8_t s[], int maxsize, int &size, int source = -1, boo
       recvcount++;
 
       /* BAUD 1200 fix, may be useful for other bauds if com errors occur at sync bytes init */
-      if ((baud_rate == 1200 || baud_rate == 4800) && initialization_phase && (recvcount > maxsize))
+      if ((baud_rate == 1200 || baud_rate == 2400 || baud_rate == 4800) && initialization_phase && (recvcount > maxsize))
       {
         if (data == 0x55)
         {
