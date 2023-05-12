@@ -1303,7 +1303,32 @@ bool readConnectBlocks(bool initialization_phase = false)
     int size = 0;
     uint8_t s[64];
     if (!(KWP_receive_block(s, 64, size, -1, initialization_phase)))
+    {
+      // Example debug copypaste
+/*       debugln(F("------"));
+      debugln(F(" - Readconnectblocks ERROR in KWP receive block"));
+      debugstrnumln(F("initialization_phase ="), initialization_phase);
+      debugstrnumln(F("maxsize ="), 64);
+      debugstrnumln(F("size ="), size);
+      debugstrnumln(F("source ="), -1);
+      debugstrnumln(F("ECU_receive_counter ="), ECU_receive_counter);
+      debugstrnumln(F("ECU_transmit_counter ="), ECU_transmit_counter);
+      debugstrnumln(F("ECU_anomaly_counter ="), ECU_anomaly_counter);
+      size_t array_length = sizeof(s) / sizeof(s[0]);
+      debugstrnumln(F("s[] length ="), array_length);
+      debug(F("s[] = "));
+      for (int i = 0; i < array_length; i++)
+      {
+        if (i < size)
+        {
+          debug(F(": "));
+          debughex(s[i]);
+        }
+      }
+      debugln(F(" "));
+      debugln(F("------")); */
       return false;
+    }
     if (size == 0)
       return false;
     if (s[2] == 0x09)
@@ -2197,7 +2222,7 @@ bool obd_connect()
   connected = true;
   display_statusbar();
   lcd_print(1, 1, F("ECU connected"), 16);
-  //display_statusbar();
+  // display_statusbar();
   return true;
 }
 
