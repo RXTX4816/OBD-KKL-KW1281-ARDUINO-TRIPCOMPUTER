@@ -89,7 +89,7 @@ uint8_t addr_selected = 0x00; // Selected ECU address to connect to, see ECU Add
 bool com_error = false;
 
 /* Temporary Measurements for if you want to find out which values show up in your groups in a desired ECU address.
-Just uncomment and add the logic in readSensors(). This can also be done with VCDS or other tools.*/
+Just uncomment and add the logic in read_sensors(). This can also be done with VCDS or other tools.*/
 bool group_side = false; // 0 = display k0 and k1. 1= display k2 and k3
 bool group_side_updated = false;
 void invert_group_side()
@@ -100,30 +100,38 @@ void invert_group_side()
 }
 uint8_t k_temp[4] = {0, 0, 0, 0};
 bool k_temp_updated = false;
-float v_temp[4] = {-1, -1, -1, -1};
+float v_temp[4] = {123.4, 123.4, 123.4, 123.4};
 bool v_temp_updated = false;
-String unit_temp[4] = {STRING_ERR, STRING_ERR, STRING_ERR, STRING_ERR};
+String unit_temp[4] = {"N/A", "N/A", "N/A", "N/A"};
 bool unit_temp_updated = false;
 void reset_temp_group_array()
 {
   for (uint8_t i = 0; i < 4; i++)
   {
     k_temp[i] = 0;
-    v_temp[i] = 0;
-    unit_temp[i] = STRING_ERR;
+    v_temp[i] = 123.4;
+    unit_temp[i] = "N/A";
   }
 }
 // DTC error
-uint16_t dtc_errors[16] = {0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000};
+uint16_t dtc_errors[16] = {0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF};
 bool dtc_errors_updated = false;
-uint8_t dtc_status_bytes[16] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+uint8_t dtc_status_bytes[16] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 bool dtc_status_bytes_updated = false;
 void reset_dtc_status_errors_array()
 {
-  for (uint8_t i = 0; i < 8; i++)
+  for (uint8_t i = 0; i < 16; i++)
   {
-    dtc_errors[i] = 0x0000;
-    dtc_status_bytes[i] = 0x00;
+    dtc_errors[i] = (uint16_t)0xFFFF;
+    dtc_status_bytes[i] = 0xFF;
+  }
+}
+void reset_dtc_status_errors_array_random()
+{
+  for (uint8_t i = 0; i < 16; i++)
+  {
+    dtc_errors[i] = (uint16_t)(i*1000);
+    dtc_status_bytes[i] = i*10;
   }
 }
 
@@ -378,7 +386,7 @@ void lcd_print(uint8_t x, uint8_t y, uint32_t number)
 void lcd_print(uint8_t x, uint8_t y, float floating_number, uint8_t width = 0)
 {
   lcd.setCursor(x, y);
-  lcd.print(floating_number);
+  lcd.print(floating_number, 1);
 }
 
 void lcd_print_bool(uint8_t x, uint8_t y, bool boolean, uint8_t width = 0)
@@ -408,18 +416,35 @@ void lcd_print_cockpit(uint8_t x, uint8_t y, uint16_t number, uint8_t width, boo
     updated = false;
   }
 }
+void lcd_print_cockpit_dtc(uint8_t x, uint8_t y, uint16_t number, uint8_t width, bool &updated, bool force_update = false)
+{
+  if ((updated || force_update))
+  {
+    lcd_clear(x, y, width);
+    lcd_print(x, y, number);
+
+    updated = false;
+  }
+}
 void lcd_print_cockpit_float(uint8_t x, uint8_t y, float number, uint8_t width, bool &updated, bool force_update = false)
 {
   if ((updated || force_update))
   {
     lcd_clear(x, y, width);
-    uint8_t number_length = String(number, 2).length();
+    uint8_t number_length = String(number, 1).length();
     if (number_length <= width)
     {
       lcd_print(x, y, number);
     }
     updated = false;
   }
+}
+
+void LCD_display_error_msg(String line_1, String line_2)
+{
+  lcd.clear();
+  lcd_print(0, 0, line_1);
+  lcd_print(0, 1, line_2);
 }
 
 void lcd_show_screen_not_supported(uint8_t screen)
@@ -525,8 +550,10 @@ void init_menu_debug()
 {
 
   // Addr not supported
-  lcd_print(0, 0, "Debug menu");
-  lcd_print(0, 1, "not supported!");
+  init_statusbar();
+  lcd_print(9, 0, "BC:");
+  lcd_print(0, 1, "KWP:");
+  lcd_print(7, 1, "FPS:");
 }
 
 void init_menu_dtc()
@@ -683,13 +710,17 @@ void display_menu_experimental(bool force_update = false)
     temp_second_pointer = 3;
   }
 
-  lcd_print_cockpit_float(5, 0, v_temp[temp_first_pointer], 5, k_temp_updated, force_update);
-  lcd_print_cockpit_float(5, 1, v_temp[temp_second_pointer], 5, k_temp_updated, force_update);
-  lcd_print_cockpit(11, 0, unit_temp[temp_first_pointer], 5, unit_temp_updated, force_update);
-  lcd_print_cockpit(11, 1, unit_temp[temp_second_pointer], 5, unit_temp_updated, force_update);
+  lcd_print_cockpit_float(4, 0, v_temp[temp_first_pointer], 7, k_temp_updated, true);
+  lcd_print_cockpit_float(4, 1, v_temp[temp_second_pointer], 7, k_temp_updated, true);
+  lcd_print_cockpit(11, 0, unit_temp[temp_first_pointer], 7, unit_temp_updated, true);
+  lcd_print_cockpit(11, 1, unit_temp[temp_second_pointer], 7, unit_temp_updated, true);
 }
-void display_menu_debug()
+void display_menu_debug(bool force_update = false)
 {
+  display_statusbar();
+  lcd_print(13, 0, block_counter);
+  lcd_print(5, 1, kwp_mode);
+  lcd_print(12, 1, (int)(1000 / DISPLAY_FRAME_LENGTH)); // TODO update to be realistic value not theoretical
 }
 void display_menu_dtc(bool force_update = false)
 {
@@ -710,10 +741,10 @@ void display_menu_dtc(bool force_update = false)
     if (dtc_pointer < 0 || dtc_pointer > 7)
       return;
     lcd_print_cockpit(0, 0, dtc_pointer + 1, 1, dtc_errors_updated, force_update);
-    lcd_print_cockpit(3, 0, dtc_errors[dtc_pointer], 6, dtc_errors_updated, force_update);
-    lcd_print_cockpit(13, 0, dtc_status_bytes[dtc_pointer], 3, dtc_status_bytes_updated, force_update);
-    lcd_print_cockpit(3, 1, dtc_errors[dtc_pointer + 1], 6, dtc_errors_updated, force_update);
-    lcd_print_cockpit(13, 1, dtc_status_bytes[dtc_pointer + 1], 3, dtc_status_bytes_updated, force_update);
+    lcd_print_cockpit(3, 0, String(dtc_errors[dtc_pointer * 2]), 6, dtc_errors_updated, force_update);
+    lcd_print_cockpit(13, 0, dtc_status_bytes[dtc_pointer * 2], 3, dtc_status_bytes_updated, force_update);
+    lcd_print_cockpit(3, 1, String(dtc_errors[dtc_pointer * 2 + 1]), 6, dtc_errors_updated, force_update);
+    lcd_print_cockpit(13, 1, dtc_status_bytes[dtc_pointer * 2 + 1], 3, dtc_status_bytes_updated, force_update);
     break;
   }
 }
@@ -1022,7 +1053,7 @@ bool KWP_send_block(uint8_t *s, int size)
 bool KWP_send_ACK_block()
 {
   debugln(F("Sending ACK block"));
-  uint8_t buf[32] = {0x03, block_counter, 0x09, 0x03};
+  uint8_t buf[4] = {0x03, block_counter, 0x09, 0x03};
   return (KWP_send_block(buf, 4));
 }
 
@@ -1134,7 +1165,7 @@ bool KWP_receive_block(uint8_t s[], int maxsize, int &size, int source = -1, boo
 
       if ((size == 0) && (recvcount == 1))
       {
-        if (source == 1 && (data != 15 || data != 3) && obd.available())
+        if (source == 1 && (data != 0x0F || data != 0x03) && obd.available())
         {
           lcd_print(0, 1, "WARN block length");
           debugln(F(" - KWP_receive_block warn: Communication error occured, check block length!"));
@@ -1270,11 +1301,11 @@ bool KWP_receive_ACK_block()
   // --------- Expect response acknowledge ----------------
   uint8_t buf[32];
   int size2 = 0;
-  if (!KWP_receive_block(buf, 4, size2))
+  if (!KWP_receive_block(buf, 32, size2))
   {
     return false;
   }
-  if (buf[0] != 0x03 || buf[2] != 0x09 || buf[3] != 0x03)
+  if (buf[2] != 0x09)
   {
     debug(F(" - Error receiving ACK procedure"));
     return false;
@@ -1293,7 +1324,7 @@ bool KWP_receive_ACK_block()
  * @return true no errors
  * @return false errors
  */
-bool readConnectBlocks(bool initialization_phase = false)
+bool read_connect_blocks(bool initialization_phase = false)
 {
   // debugln(F(" - Readconnectblocks"));
 
@@ -1305,28 +1336,28 @@ bool readConnectBlocks(bool initialization_phase = false)
     if (!(KWP_receive_block(s, 64, size, -1, initialization_phase)))
     {
       // Example debug copypaste
-/*       debugln(F("------"));
-      debugln(F(" - Readconnectblocks ERROR in KWP receive block"));
-      debugstrnumln(F("initialization_phase ="), initialization_phase);
-      debugstrnumln(F("maxsize ="), 64);
-      debugstrnumln(F("size ="), size);
-      debugstrnumln(F("source ="), -1);
-      debugstrnumln(F("ECU_receive_counter ="), ECU_receive_counter);
-      debugstrnumln(F("ECU_transmit_counter ="), ECU_transmit_counter);
-      debugstrnumln(F("ECU_anomaly_counter ="), ECU_anomaly_counter);
-      size_t array_length = sizeof(s) / sizeof(s[0]);
-      debugstrnumln(F("s[] length ="), array_length);
-      debug(F("s[] = "));
-      for (int i = 0; i < array_length; i++)
-      {
-        if (i < size)
-        {
-          debug(F(": "));
-          debughex(s[i]);
-        }
-      }
-      debugln(F(" "));
-      debugln(F("------")); */
+      /*       debugln(F("------"));
+            debugln(F(" - Readconnectblocks ERROR in KWP receive block"));
+            debugstrnumln(F("initialization_phase ="), initialization_phase);
+            debugstrnumln(F("maxsize ="), 64);
+            debugstrnumln(F("size ="), size);
+            debugstrnumln(F("source ="), -1);
+            debugstrnumln(F("ECU_receive_counter ="), ECU_receive_counter);
+            debugstrnumln(F("ECU_transmit_counter ="), ECU_transmit_counter);
+            debugstrnumln(F("ECU_anomaly_counter ="), ECU_anomaly_counter);
+            size_t array_length = sizeof(s) / sizeof(s[0]);
+            debugstrnumln(F("s[] length ="), array_length);
+            debug(F("s[] = "));
+            for (int i = 0; i < array_length; i++)
+            {
+              if (i < size)
+              {
+                debug(F(": "));
+                debughex(s[i]);
+              }
+            }
+            debugln(F(" "));
+            debugln(F("------")); */
       return false;
     }
     if (size == 0)
@@ -1358,7 +1389,7 @@ bool readConnectBlocks(bool initialization_phase = false)
  * @return true no errors
  * @return false errors
  */
-bool readSensors(int group)
+bool read_sensors(int group)
 {
 
   for (int i = 0; i <= 3; i++)
@@ -2004,13 +2035,10 @@ bool readSensors(int group)
 /**
  * KW1281 procedure to send a simple acknowledge block to keep the connection alive
  */
-bool send_ack(bool expect_response_ack = true)
+bool keep_alive()
 {
   if (!KWP_send_ACK_block())
     return false;
-
-  if (!expect_response_ack)
-    return true;
 
   return KWP_receive_ACK_block();
 }
@@ -2018,101 +2046,96 @@ bool send_ack(bool expect_response_ack = true)
 /**
  * KW1281 procedure to read DTC error codes
  *
- * @return 0=false, 1=true, 2=true_no_errors_found
+ * @return Amount of DTC errors retrieved or -1 if something failed
  */
-uint8_t read_DTC_codes()
+int8_t read_DTC_codes()
 {
-  debug(F("Read DTC on ADDR 0x"));
-  debughexln(addr_selected);
-
-  if (!KWP_send_DTC_read_block())
-    return false;
-
-  reset_dtc_status_errors_array();
-  bool all_dtc_errors_received = false;
-  uint8_t dtc_errors_received_counter = 0;
-  uint8_t s[64];
-  int size = 0;
-  while (!all_dtc_errors_received)
-  {
-    if (!KWP_receive_block(s, 64, size, 1, false))
-    {
-      return false;
-    }
-    if (com_error)
-    {
-      // Kommunikationsfehler
-      KWP_error_block();
-      return false;
-    }
-
-    if (s[2] == 0xFC)
-    {
-      // Read next DTC error block
-      if (s[3] == 0xFF && s[4] == 0xFF && s[5] == 0x88)
-      {
-        // No DTC errors found
-        debugln(F("No DTC codes found"));
-        return 2;
-      }
-      else
-      {
-        // Extract DTC errors
-        uint8_t block_length = s[0];
-        uint8_t dtc_error_amount = (uint8_t)((block_length - 3) / 3);
-        if (dtc_error_amount < 1 || dtc_error_amount > 4)
-        {
-          debugln(F("DTC wrong amount of DTC errors"));
-          return false;
-        }
-        for (int i = 0; i < dtc_error_amount; i++)
-        {
-          uint8_t byte_high = s[3 + 3 * i];
-          uint8_t byte_low = s[3 + 3 * i + 1];
-          uint8_t byte_status = s[3 + 3 * i + 2];
-          dtc_errors[i + dtc_errors_received_counter * 4] = byte_low | (byte_high << 8);
-          dtc_status_bytes[i + dtc_errors_received_counter * 4] = byte_status;
-        }
-        debug(F("DTC errors: "));
-        for (int i = 0; i < dtc_error_amount; i++)
-        {
-          debug(i);
-          debug(F(" = "));
-          debughex(dtc_errors[i]);
-          debug(F(" | "));
-        }
-        debugln(F(""));
-        debug(F("DTC Status bytes: "));
-        for (int i = 0; i < dtc_error_amount; i++)
-        {
-          debug(i);
-          debug(F(" = "));
-          debughex(dtc_status_bytes[i]);
-          debug(F(" | "));
-        }
-        debugln(F(""));
-        dtc_errors_received_counter++;
-        if (dtc_errors_received_counter > 3)
-        {
-          debugln(F("Too much errors to receive. INCREASE ARRAY SIZE!"));
-          all_dtc_errors_received = true;
-          continue;
-        }
-      }
-    }
-    else if (s[2] == 0x09)
-    {
-      // No more DTC error blocks
-      all_dtc_errors_received = true;
-      continue;
-    }
-    else
-    {
-      debugln(F("DTC wrong block title"));
-    }
+  debug(F("Read DTC"));
+  if (simulation_mode_active) {
+    reset_dtc_status_errors_array_random();
+    return 0;
   }
 
-  return KWP_send_ACK_block();
+  if (!KWP_send_DTC_read_block())
+    return -1;
+
+  reset_dtc_status_errors_array();
+  uint8_t dtc_counter = 0;
+  uint8_t s[64];
+  while (true)
+  {
+    int size = 0;
+    if (!KWP_receive_block(s, 64, size))
+      return -1;
+
+    // if (com_error)
+    //{
+    //   // Kommunikationsfehler
+    //   KWP_error_block();
+    //   return false;
+    // }
+
+    if (s[2] == 0x09) // No more DTC error blocks
+      break;
+    if (s[2] != 0xFC)
+    {
+      debugln(F("DTC wrong block title"));
+      lcd.clear();
+      lcd_print(0, 0, "DTC error");
+      lcd_print(0, 1, "block title");
+      delay(1222);
+      lcd.clear();
+      lcd_print(0, 0, "Expect 0xFC");
+      lcd_print(0, 1, "is " + String(s[2], HEX));
+      return -1;
+    }
+
+    // Extract DTC errors
+    int count = (size - 4) / 3;
+    for (int i = 0; i < count; i++)
+    {
+      uint8_t byte_high = s[3 + 3 * i];
+      uint8_t byte_low = s[3 + 3 * i + 1];
+      uint8_t byte_status = s[3 + 3 * i + 2];
+
+      if (byte_high == 0xFF && byte_low == 0xFF && byte_status == 0x88)
+        debugln(F("No DTC codes found")); // return 2;
+      else
+      {
+        uint16_t dtc = (byte_high << 8) + byte_low;
+        // if (dtcCounter >= startFrom && dtcCounter - startFrom < amount)
+        dtc_errors[dtc_counter] = dtc;
+        dtc_status_bytes[dtc_counter] = byte_status;
+        dtc_counter++;
+      }
+    }
+    if (!KWP_send_ACK_block())
+    {
+      LCD_display_error_msg("DTC read error", "Send ACK");
+      return -1;
+    }
+
+    /* debug(F("DTC errors: "));
+    for (int i = 0; i < count; i++)
+    {
+      debug(i);
+      debug(F(" = "));
+      debughex(dtc_errors[i]);
+      debug(F(" | "));
+    }
+    debugln(F(""));
+    debug(F("DTC Status bytes: "));
+    for (int i = 0; i < count; i++)
+    {
+      debug(i);
+      debug(F(" = "));
+      debughex(dtc_status_bytes[i]);
+      debug(F(" | "));
+    }
+    debugln(F("")); */
+  }
+
+  return dtc_counter;
 }
 
 /**
@@ -2120,7 +2143,22 @@ uint8_t read_DTC_codes()
  */
 bool delete_DTC_codes()
 {
-  return KWP_send_DTC_delete_block();
+
+  if (simulation_mode_active)
+    return true;
+
+  if (!KWP_send_DTC_delete_block())
+    return false;
+
+  int size = 0;
+  uint8_t s[64];
+  if (!KWP_receive_block(s, 64, size))
+    return false;
+
+  if (s[2] != 0x09) // Expect ACK
+    return false;
+
+  return true;
 }
 
 /**
@@ -2204,7 +2242,7 @@ bool obd_connect()
   // debugln(F("KWP_5baud_init DONE"));
   // lcd_print(0, 1, "Read ECU data...");
   // debugln(F("ReadConnectBlocks"));
-  if (!readConnectBlocks(false))
+  if (!read_connect_blocks(false))
   {
     debugln(F(" "));
     debugln(F("------"));
@@ -2377,6 +2415,8 @@ void setup()
   lcd_print(1, 1, "D I S P L A Y");
 
   delay(777);
+
+  reset_dtc_status_errors_array();
 }
 
 void loop()
@@ -2393,14 +2433,14 @@ void loop()
     switch (kwp_mode)
     {
     case KWP_MODE_ACK:
-      if (!send_ack())
+      if (!keep_alive())
       {
         disconnect();
         return;
       }
       break;
     case KWP_MODE_READGROUP:
-      if (!readSensors(kwp_group))
+      if (!read_sensors(kwp_group))
       {
         disconnect();
         return;
@@ -2410,7 +2450,7 @@ void loop()
       // Read the sensor groups
       for (int i = 1; i <= 3; i++)
       {
-        if (!readSensors(i))
+        if (!read_sensors(i))
         {
           disconnect();
           return;
@@ -2516,29 +2556,31 @@ void loop()
             if (BUTTON_SELECT(user_input))
             {
               // Select button = Exit/Reconnect
-              delay(5);
-              if (!read_DTC_codes())
+              int8_t dtc_codes = read_DTC_codes();
+              if (dtc_codes == -1)
               {
-                lcd.clear();
-                lcd_print(0, 0, "DTC read error");
-                lcd_print(0, 1, "Disconnecting...");
+                LCD_display_error_msg("DTC read error", "Disconnecting...");
+                delay(1222);
                 disconnect();
                 return;
               }
+              lcd_clear(0, 1, 16);
+              lcd_print(3, 1, "<Success>");
             }
             break;
           case 1:
             if (BUTTON_SELECT(user_input))
             {
-              delay(5);
               if (!delete_DTC_codes())
               {
-                lcd.clear();
-                lcd_print(0, 0, "DTC delete error");
-                lcd_print(0, 1, "Disconnecting...");
+                LCD_display_error_msg("DTC delete error", "Disconnecting...");
+                delay(1222);
                 disconnect();
                 return;
               }
+              lcd_clear(0, 1, 16);
+              lcd_print(3, 1, "<Success>");
+              reset_dtc_status_errors_array();
             }
             break;
           default:
@@ -2622,6 +2664,7 @@ void loop()
       break;
     case 2:
       init_menu_debug();
+      display_menu_debug(true);
       break;
     case 3:
       init_menu_dtc();

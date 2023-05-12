@@ -41,7 +41,19 @@ Open the project with platformIO and a programming environment of your chase (VS
 
 ## KWP1281 Communication
 
-TODO: Add information about the KWP1281 protocol.
+##### KWP_INIT
+To initialize a connection through OBD KWP1281 K-Line send a 5 baud init, acknowledge the sync bytes and receive the connect blocks. Make sure you don't IDLE in this phase or else the ECU may do nonsense.
+
+##### KWP_LOOP
+After initialization you can select 3 KWP_MODES: 
+- 0 = Keep connection alive, send acknowledge blocks
+- 1 = Read all values from all groups from ECU. (ECU dependent, you may need to adapt to yours)
+- 2 = Read the 4 values from one group. (ECU independent, see group menu)
+
+Communication errors can occur which are handled by the code. There may be situations where this is not the case, please open an issue if this happens to you.
+
+Manual exit, DTC read and delete blocks are only send if the user manually presses the specified UI button.
+
 
 ## Label Files
 The measurement groups of each ECU Addres contain 4 values. Each different version of each car may have a different order of values and different values to obtain. To know which groups display which values you either need to search for your cars Label File "xxx-xxx-xxx.LBL" or hook up VCDS (or any other software to display measurement groups) and record your display while clicking through the groups to get a rough image what these values correspond to.
@@ -119,7 +131,12 @@ If you have questions feel free to open an issue and paste your Serial log there
 Contributions are welcomed. 
 
 ## Future
-Will add sometime in the future:
+I'm not planning to add the following to this project but feel free to contribute:
 - LEDs + Sound on critical warnings (Oil pressure, temperature too high, DTC errors)
+- Adaptation support
+- Login support
+- Save read_connect_blocks() info about ECU and display it
+- Memory optimizations
+
 
 
