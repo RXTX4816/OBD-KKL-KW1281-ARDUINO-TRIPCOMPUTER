@@ -19,10 +19,16 @@ Ignore compile warnings.
 /* Config */
 #define DEBUG 1                  // 1 = enable Serial.print
 #define ECU_TIMEOUT 1300         // Most commonly is 1100ms
-#define DISPLAY_FRAME_LENGTH 333 // Length of 1 frame in ms
+#define DISPLAY_FRAME_LENGTH 177 // Length of 1 frame in ms
 #define DISPLAY_MAX_X 16
 #define DISPLAY_MAX_Y 2
 uint8_t simulation_mode_active = false;
+uint8_t auto_setup = false; // Hold select button to auto initiate connect to:
+const bool AUTO_SETUP_SIMULATION_MODE_ACTIVE = false;
+const uint8_t AUTO_SETUP_ADDRESS = 0x17;
+const uint16_t AUTO_SETUP_BAUD_RATE = 10400;
+// const uint8_t AUTO_SETUP_ADDRESS = 0x01
+// const uint16_t AUTO_SETUP_BAUD_RATE = 9600;
 #define BUTTON_RIGHT(in) (in < 60)
 #define BUTTON_UP(in) (in >= 60 && in < 200)
 #define BUTTON_DOWN(in) (in >= 200 && in < 400)
@@ -130,8 +136,8 @@ void reset_dtc_status_errors_array_random()
 {
   for (uint8_t i = 0; i < 16; i++)
   {
-    dtc_errors[i] = (uint16_t)(i*1000);
-    dtc_status_bytes[i] = i*10;
+    dtc_errors[i] = (uint16_t)(i * 1000);
+    dtc_status_bytes[i] = i * 10;
   }
 }
 
@@ -291,7 +297,7 @@ void increment_group_current()
 {
   if (group_current > menu_experimental_screen_max)
   {
-    group_current = 0;
+    group_current = 1;
   }
   else
   {
@@ -302,7 +308,7 @@ void increment_group_current()
 
 void decrement_group_current()
 {
-  if (group_current == 0)
+  if (group_current <= 1)
   {
     group_current = menu_experimental_screen_max;
   }
@@ -2051,7 +2057,8 @@ bool keep_alive()
 int8_t read_DTC_codes()
 {
   debug(F("Read DTC"));
-  if (simulation_mode_active) {
+  if (simulation_mode_active)
+  {
     reset_dtc_status_errors_array_random();
     return 0;
   }
@@ -2320,57 +2327,65 @@ bool connect()
     userinput_simulation_mode = simulation_mode_active;
   }
 
-  connect_helper_bool_display("Connect mode", "<- ECU", "SIM ->");
-  connect_helper_bool(userinput_simulation_mode, simulation_mode_active, 0, 1);
-
-  lcd.clear();
-  lcd_print(0, 0, "<--   Baud:  -->");
-  lcd_print(2, 1, "-> " + String(userinput_baudrate), 10);
-  bool pressed_enter = false;
-  while (!pressed_enter)
+  if (!auto_setup)
   {
-    int user_input = analogRead(0);
-    if (BUTTON_RIGHT(user_input))
+    connect_helper_bool_display("Connect mode", "<- ECU", "SIM ->");
+    connect_helper_bool(userinput_simulation_mode, simulation_mode_active, 0, 1);
+
+    lcd.clear();
+    lcd_print(0, 0, "<--   Baud:  -->");
+    lcd_print(2, 1, "-> " + String(userinput_baudrate), 10);
+    bool pressed_enter = false;
+    while (!pressed_enter)
     {
-      // Right button
-      if (userinput_baudrate_pointer >= 4)
+      int user_input = analogRead(0);
+      if (BUTTON_RIGHT(user_input))
       {
-        userinput_baudrate_pointer = 0;
+        // Right button
+        if (userinput_baudrate_pointer >= 4)
+        {
+          userinput_baudrate_pointer = 0;
+        }
+        else
+          userinput_baudrate_pointer++;
+        // userinput_baudrate_last = userinput_baudrate;
+        userinput_baudrate = supported_baud_rates[userinput_baudrate_pointer];
+        lcd_print(2, 1, "-> " + String(userinput_baudrate), 10);
+        delay(333);
       }
-      else
-        userinput_baudrate_pointer++;
-      // userinput_baudrate_last = userinput_baudrate;
-      userinput_baudrate = supported_baud_rates[userinput_baudrate_pointer];
-      lcd_print(2, 1, "-> " + String(userinput_baudrate), 10);
-      delay(333);
-    }
-    else if (BUTTON_LEFT(user_input))
-    {
-      // Left button
-      if (userinput_baudrate_pointer <= 0)
+      else if (BUTTON_LEFT(user_input))
       {
-        userinput_baudrate_pointer = 4;
+        // Left button
+        if (userinput_baudrate_pointer <= 0)
+        {
+          userinput_baudrate_pointer = 4;
+        }
+        else
+          userinput_baudrate_pointer--;
+        // userinput_baudrate_last = userinput_baudrate;
+        userinput_baudrate = supported_baud_rates[userinput_baudrate_pointer];
+        lcd_print(2, 1, "-> " + String(userinput_baudrate), 10);
+        delay(333);
       }
-      else
-        userinput_baudrate_pointer--;
-      // userinput_baudrate_last = userinput_baudrate;
-      userinput_baudrate = supported_baud_rates[userinput_baudrate_pointer];
-      lcd_print(2, 1, "-> " + String(userinput_baudrate), 10);
-      delay(333);
+      else if (BUTTON_SELECT(user_input))
+      {
+        // Enter button
+        pressed_enter = true;
+      }
+      delay(10);
     }
-    else if (BUTTON_SELECT(user_input))
-    {
-      // Enter button
-      pressed_enter = true;
-    }
-    delay(10);
+    baud_rate = userinput_baudrate;
+    delay(555);
+
+    connect_helper_bool_display("ECU address:", "<-- 01", "17 -->");
+    connect_helper_bool(userinput_ecu_address, addr_selected, ADDR_ENGINE, ADDR_INSTRUMENTS);
   }
-  baud_rate = userinput_baudrate;
-  delay(555);
-
-  connect_helper_bool_display("ECU address:", "<-- 01", "17 -->");
-  connect_helper_bool(userinput_ecu_address, addr_selected, ADDR_ENGINE, ADDR_INSTRUMENTS);
-
+  else
+  {
+    simulation_mode_active = AUTO_SETUP_SIMULATION_MODE_ACTIVE;
+    baud_rate = AUTO_SETUP_BAUD_RATE;
+    addr_selected = AUTO_SETUP_ADDRESS;
+  }
   debugln(F("Saved configuration: "));
   debugstrnumln(F("--- SIMULATION "), simulation_mode_active);
   debugstrnumln(F("--- baud "), baud_rate);
@@ -2414,7 +2429,14 @@ void setup()
   lcd_print(0, 0, "O B D");
   lcd_print(1, 1, "D I S P L A Y");
 
-  delay(777);
+  delay(222);
+  uint32_t setup_start_time = millis();
+  while (millis() - setup_start_time < 777) // active auto setup
+    if (BUTTON_SELECT(analogRead(0)))
+    {
+      auto_setup = true;
+      break;
+    }
 
   reset_dtc_status_errors_array();
 }
