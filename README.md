@@ -1,8 +1,8 @@
 # Arduino Uno Display Tripcomputer for the KW1281 KKL K-Line protocol
 
-This code is for the Arduino Uno with a 16x2 Display Shield.
+This code is for the Arduino Uno with a 16x2 Display Shield. [WORKING]
 
-For the Arduino Mega with a TFT LCD Display Shield look into [this repo](https://github.com/RXTX4816/OBD-KKL-KW1281-ARDUINO-TFTLCD-TRIPCOMPUTER)
+For the Arduino Mega with a TFT LCD Display Shield look into [this repo](https://github.com/RXTX4816/OBD-KKL-KW1281-ARDUINO-TFTLCD-TRIPCOMPUTER) [NOT WORKING YET]
 
 ![](assets/obdisplay.gif)
 
@@ -14,13 +14,12 @@ This repo contains all necessary files. The only file containing code is [obdisp
 ## Features
 - Supported baud rates 1200, 2400, 4800, 9600, 10400
 - Supports KWP1281 K-Line through NewSoftwareSerial
-- Read sensor data
+- 3 operating modes: Acknowledge, Group reading, Sensors reading
 - Read, view and delete DTC Errors
 - Supported ECU addr 0x01(engine) and 0x17(dashboard)
 - Automatic communication error handling
 - Simulation mode to test the display
 - KWP1281 exit procedure
-- 3 modes: Acknowledge, Group reading, Sensors reading
 
 ## Setup Instructions
 Requirements: Arduino Uno, 16x2 Liquidcrystal Display Shield, Autodia K409 KKL OBD to USB cable
