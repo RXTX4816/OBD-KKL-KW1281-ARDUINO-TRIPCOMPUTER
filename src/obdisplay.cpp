@@ -1441,11 +1441,24 @@ bool read_sensors(int group)
   }
   if (s[2] != 0xE7)
   {
-    debugln(F("ERROR: invalid answer 0xE7"));
+
+    debugln(F("ERROR: invalid answer 0xE7. Full s[]:"));
+    for (uint8_t i = 0; i < 16; i++) {
+      debugstrnumhex(F("| "), s[i]);
+    }
+    debugln();
     lcd_print(0, 1, "ERR: s[2]!=xE7");
-    delay(2000);
-    // errorData++;
-    return false;
+    if (baud_rate != 1200)
+    {
+      delay(2000);
+      // errorData++;
+      return false;
+    }
+    // Baud 1200 trial and error
+    if (s[0] != 0x0F) {
+      debugln(F("Exiting due to s[0] != 0x0F in group reading in baud 1200"));
+      return false;
+    }
   }
   int count = (size - 4) / 3;
   debugstrnumln(F("count="), count);
