@@ -1416,8 +1416,18 @@ bool read_sensors(int group)
   int size = 0;
   if (!KWP_receive_block(s, 64, size, 1))
   {
+    debugln("Full s[]:");
+    for (uint8_t i = 0; i < 33; i++) {
+      debugstrnumhex(F("| "), s[i]);
+    }
+    debugln();
     return false;
   }
+  debugln("Full s[]:");
+  for (uint8_t i = 0; i < 33; i++) {
+    debugstrnumhex(F("| "), s[i]);
+  }
+  debugln();
   if (com_error)
   {
     // Kommunikationsfehler
@@ -1438,28 +1448,53 @@ bool read_sensors(int group)
     {
       return false;
     }
+    debugln("!SENSORS_COM_ERROR!");
+    debugln("Full s[]:");
+    for (uint8_t i = 0; i < 33; i++) {
+      debugstrnumhex(F("| "), s[i]);
+    }
+    debugln();
   }
   if (s[2] != 0xE7)
   {
 
-    debugln(F("ERROR: invalid answer 0xE7. Full s[]:"));
-    for (uint8_t i = 0; i < 16; i++) {
-      debugstrnumhex(F("| "), s[i]);
+    debugln(F("Untypical response type != 0xE7."));
+    //lcd_print(0, 1, "ERR: s[2]!=xE7");
+
+    // -------------------------------
+    // 0xE7 error  testing - see issue
+    // -------------------------------
+    bool allowed_to_pass = true;
+    if (baud_rate == 9600 && addr_selected == 0x01) {
+      // 0x01 Engine ECU check to minimize impact on other configs
+       if (group_current == 1) {
+          // First group engine is:
+          // RPM | TEMP | VOLTAGE | BIN BITS = 10 00 00 11
+          if (s[2] == 0x02) {
+            debugln("0x02 on group 1!");
+          } else {
+            debugstrnumhexln("s[2]=", s[2]);
+            allowed_to_pass = false; // Security measure
+          }
+       } else {
+          // Other groups always VAL1 | VAL2 | VAL3 | VAL4
+          if (s[2] == 0x02) {
+            debugln("0x02 on group > 1!");
+          } else {
+            debugstrnumhexln("s[2]=", s[2]);
+            allowed_to_pass = false; // Security measure
+          }
+       }
     }
-    debugln();
-    lcd_print(0, 1, "ERR: s[2]!=xE7");
-    if (baud_rate != 1200)
-    {
+    if (!allowed_to_pass) {
       delay(2000);
       // errorData++;
       return false;
     }
-    // Baud 1200 trial and error
-    if (s[0] != 0x0F) {
-      debugln(F("Exiting due to s[0] != 0x0F in group reading in baud 1200"));
-      return false;
-    }
+    // -------------------------------
   }
+
+
   int count = (size - 4) / 3;
   debugstrnumln(F("count="), count);
   for (int idx = 0; idx < count; idx++)
