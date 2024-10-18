@@ -924,7 +924,7 @@ int16_t OBD_read()
   {
     if (millis() >= timeout)
     {
-      debugln(F("ERROR: OBD_read() timeout obd.available() = 0."));
+      //debugln(F("ERROR: OBD_read() timeout obd.available() = 0."));
       return -1;
     }
   }
@@ -1031,9 +1031,9 @@ bool KWP_send_block(uint8_t *s, int size)
         return true; // KWP manual exit
       if (complement != (data ^ 0xFF))
       {
-        debugstrnumhex(F("MCU: "), data);
-        debugstrnumhex(F(" ECU: "), complement);
-        debugln(F("ERROR: invalid complement"));
+        //debugstrnumhex(F("MCU: "), data);
+        //debugstrnumhex(F(" ECU: "), complement);
+        //debugln(F("ERROR: invalid complement"));
         lcd_print(0, 1, "ERR: INV COMPL");
         delay(1333);
         lcd_print(0, 1, "MCU:", 16);
@@ -2434,8 +2434,8 @@ bool connect()
     baud_rate = AUTO_SETUP_BAUD_RATE;
     addr_selected = AUTO_SETUP_ADDRESS;
   }
-  debugln(F("Saved configuration: "));
-  debugstrnumln(F("--- SIMULATION "), simulation_mode_active);
+  debugln(F("Saved config: "));
+  debugstrnumln(F("--- SIM "), simulation_mode_active);
   debugstrnumln(F("--- baud "), baud_rate);
   debugstrnumhexln(F("--- addr "), addr_selected);
 
