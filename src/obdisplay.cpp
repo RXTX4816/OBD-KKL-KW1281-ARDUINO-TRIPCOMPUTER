@@ -851,11 +851,11 @@ void compute_values()
 void disconnect()
 {
   obd.end();
-  debug(F("Disconnected. Block counter: "));
+  debug(F("Disconnected. BC: "));
   debug(block_counter);
-  debug(F(". Connected: "));
+  debug(F(". CON: "));
   debug(connected);
-  debug(F(". Available: "));
+  debug(F(". AVA: "));
   debugln(obd.available());
 
   block_counter = 0;
@@ -890,8 +890,8 @@ int available()
  */
 void OBD_write(uint8_t data)
 {
-  // debug(F("->MCU: "));
-  // debughexln(data);
+  debug(F("->MCU: "));
+  debughexln(data);
 
   uint8_t to_delay = 5;
   switch (baud_rate)
@@ -924,13 +924,13 @@ int16_t OBD_read()
   {
     if (millis() >= timeout)
     {
-      //debugln(F("ERROR: OBD_read() timeout obd.available() = 0."));
+      debugln(F("ERROR: OBD_read() timeout obd.available() = 0."));
       return -1;
     }
   }
   int16_t data = obd.read();
-  // debug(F("ECU: "));
-  // debughexln(data);
+  debug(F("ECU: "));
+  debughexln(data);
 
   return data;
 }
@@ -1106,7 +1106,7 @@ bool KWP_receive_block(uint8_t s[], int maxsize, int &size, int source = -1, boo
 
   if (size > maxsize)
   {
-    debugln(F(" - KWPReceiveBlock error: Invalid maxsize"));
+    debugln(F(" - Invalid maxsize"));
     lcd_print(0, 1, "ERR:size>maxsize");
     delay(2000);
     return false;
@@ -1122,7 +1122,7 @@ bool KWP_receive_block(uint8_t s[], int maxsize, int &size, int source = -1, boo
       data = OBD_read();
       if (data == -1)
       {
-        debugln(F(" - KWPReceiveBlock error: (Available=0) or empty buffer!"));
+        debugln(F(" - AVA=0 or empty buffer!"));
         lcd_print(0, 1, "ERROR data = -1 ");
         delay(1700);
         return false;
@@ -1173,8 +1173,8 @@ bool KWP_receive_block(uint8_t s[], int maxsize, int &size, int source = -1, boo
       {
         if (source == 1 && (data != 0x0F || data != 0x03) && obd.available())
         {
-          lcd_print(0, 1, "WARN block length");
-          debugln(F(" - KWP_receive_block warn: Communication error occured, check block length!"));
+          lcd_print(0, 1, "WARN block_len");
+          debugln(F("COM ERR check block_len"));
           com_error = true;
           size = 6;
         }
@@ -1185,7 +1185,7 @@ bool KWP_receive_block(uint8_t s[], int maxsize, int &size, int source = -1, boo
         if (size > maxsize)
         {
 
-          debugln(F(" - KWP_receive_block error: Invalid maxsize2"));
+          debugln(F("Invalid maxsize2"));
           lcd_print(0, 1, "ER2:siz2>maxsiz2");
           delay(2000);
           return false;
@@ -1224,8 +1224,8 @@ bool KWP_receive_block(uint8_t s[], int maxsize, int &size, int source = -1, boo
             delay(1000);
             lcd_print(0, 1, "Exp:" + String(data) + " Is:" + String(block_counter) + "         ");
             delay(2222);
-            debugstrnum(F(" - KWP_receive_block error: Invalid block counter. Expected: "), block_counter);
-            debugstrnumln(F(" Is: "), data);
+            debugstrnum(F(" - Invalid block counter. Expected: "), block_counter);
+            //debugstrnumln(F(" Is: "), data);
             return false;
           }
         }
@@ -1244,14 +1244,14 @@ bool KWP_receive_block(uint8_t s[], int maxsize, int &size, int source = -1, boo
 
     if (millis() >= timeout)
     {
-      debug(F(" - KWP_receive_block: Timeout overstepped on iteration "));
+      debug(F("Timeout! iter="));
       debug(temp_iteration_counter);
-      debug(F(" with receivecount "));
+      debug(F(". recvcnt="));
       debugln(recvcount);
 
       if (recvcount == 0)
       {
-        debugln(F("No connection to ECU! Check wiring."));
+        debugln(F("No CON to ECU! Check wiring."));
       }
 
       if (recvcount == 0)
@@ -1313,7 +1313,7 @@ bool KWP_receive_ACK_block()
   }
   if (buf[2] != 0x09)
   {
-    debug(F(" - Error receiving ACK procedure"));
+    debug(F("ACK error"));
     return false;
   }
   if (com_error)
@@ -1373,7 +1373,7 @@ bool read_connect_blocks(bool initialization_phase = false)
     if (s[2] != 0xF6)
     {
       debug(F(" - Readconnectblocks ERROR: unexpected answer: "));
-      debugstrnumhexln(F("should be 0xF6 but is "), s[2]);
+      debugstrnumhexln(F("0xF6!="), s[2]);
 
       lcd_print(0, 1, "ERR: s[2]!=xF6");
       delay(2000);
@@ -1423,9 +1423,9 @@ bool read_sensors(int group)
     debugln();
     return false;
   }
-  debugln("Full s[]:");
-  for (uint8_t i = 0; i < 33; i++) {
-    debugstrnumhex(F("| "), s[i]);
+  debugln("BUF:");
+  for (uint8_t i = 0; i < 34; i++) {
+    debugstrnumhex(F(" "), s[i]);
   }
   debugln();
   if (com_error)
@@ -1449,54 +1449,97 @@ bool read_sensors(int group)
       return false;
     }
     debugln("!SENSORS_COM_ERROR!");
-    debugln("Full s[]:");
-    for (uint8_t i = 0; i < 33; i++) {
-      debugstrnumhex(F("| "), s[i]);
-    }
-    debugln();
   }
   if (s[2] != 0xE7)
   {
 
-    debugln(F("Untypical response type != 0xE7."));
+    //debugln(F("type != 0xE7."));
     //lcd_print(0, 1, "ERR: s[2]!=xE7");
 
     // -------------------------------
     // 0xE7 error  testing - see issue
     // -------------------------------
-    bool allowed_to_pass = true;
+    bool is_special_case = false;
+    bool is_super_special_case = false;
     if (baud_rate == 9600 && addr_selected == 0x01) {
       // 0x01 Engine ECU check to minimize impact on other configs
-       if (group_current == 1) {
+       if (group == 1) {
           // First group engine is:
           // RPM | TEMP | VOLTAGE | BIN BITS = 10 00 00 11
           if (s[2] == 0x02) {
-            debugln("0x02 on group 1!");
+            //debugln("0x02 on group 1!");
+            is_special_case = true;
+          } else if (s[2] == 0xF4) {
+            is_super_special_case = true;
           } else {
-            debugstrnumhexln("s[2]=", s[2]);
-            allowed_to_pass = false; // Security measure
+            delay(2000);
+            // errorData++;
+            return false;
           }
        } else {
           // Other groups always VAL1 | VAL2 | VAL3 | VAL4
           if (s[2] == 0x02) {
-            debugln("0x02 on group > 1!");
+            is_special_case = true;
+          } else if (s[2] == 0xF4) {
+            is_super_special_case = true;
           } else {
-            debugstrnumhexln("s[2]=", s[2]);
-            allowed_to_pass = false; // Security measure
+            delay(2000);
+            // errorData++;
+            return false;
           }
        }
     }
-    if (!allowed_to_pass) {
-      delay(2000);
-      // errorData++;
-      return false;
+
+    if (is_special_case) {
+      // Special case custom implementation for 0x02 type
+      // 0x01 ADDR_ENGINE
+      //debugln("SPECIAL");
+      switch (group) {
+        case 1:
+          //----------------------------------------------------------
+          //RPM
+          //----------------------------------------------------------
+          engine_rpm = (uint16_t) (0.2 * s[4] * s[5]);
+          engine_rpm_updated = true;
+          debugstrnumln(F("RPM"), engine_rpm);
+          //----------------------------------------------------------
+          // Temp 74°C (COOLANT?)
+          //----------------------------------------------------------
+          coolant_temp = (uint8_t) (s[7] * (s[8] - 100) * 0.1);
+          coolant_temp_updated = true;
+          debugstrnumln(F("COOL"), coolant_temp);
+          //----------------------------------------------------------
+          // Voltage (0V?)
+          //----------------------------------------------------------
+          voltage = 0.001 * s[10] * s[11];
+          voltage_updated = true;
+          debugstrnumln(F("V"), voltage);
+          //----------------------------------------------------------
+          // Binary bits 1 0 0 0   0 0 1 1
+          //----------------------------------------------------------
+          // SENSOR_TYPE = 0x24
+          // TODO: Maybe in the future
+          break;
+        case 2:
+          // TODO: Look for label files / VCDS and put the rest accordingly.
+          break;
+        default:
+          break;
+      }
+      return true; // Return success since only reading group
+    }
+
+    if (is_super_special_case) {
+      // Super special case for 0xF4 type (Just in case)
+      debugln("SUPER_SPECIAL");
+      return true; // Return success since only reading group
     }
     // -------------------------------
   }
 
 
   int count = (size - 4) / 3;
-  debugstrnumln(F("count="), count);
+  //debugstrnumln(F("count="), count);
   for (int idx = 0; idx < count; idx++)
   {
     byte k = s[3 + idx * 3];
@@ -1505,13 +1548,13 @@ bool read_sensors(int group)
     String n;
     float v = 0;
 
-    debug(F("type="));
-    debug(k);
-    debug(F("  a="));
-    debug(a);
-    debug(F("  b="));
-    debug(b);
-    debug(F("  text="));
+    //debug(F("type="));
+    //debug(k);
+    //debug(F("  a="));
+    //debug(a);
+    //debug(F("  b="));
+    //debug(b);
+    //debug(F("  text="));
 
     String t = "";
     String units = "";
@@ -1779,7 +1822,7 @@ bool read_sensors(int group)
       units = F("m/s^2");
       break;
     default:
-      sprintf(buf, "%2x, %2x      ", a, b);
+      //sprintf(buf, "%2x, %2x      ", a, b);
       break;
     }
 
@@ -2223,7 +2266,7 @@ bool kwp_exit()
 {
   lcd.clear();
   lcd_print(0, 0, "Exiting...");
-  debugln(F("Manual KWP exit.."));
+  //debugln(F("Manual KWP exit.."));
   // Perform KWP end output block
   delay(15);
   uint8_t s[64];
@@ -2233,13 +2276,13 @@ bool kwp_exit()
   s[3] = 0x03;
   if (!KWP_send_block(s, 4))
   {
-    debugln(F("KWP exit failed"));
+    //debugln(F("KWP exit failed"));
     lcd_print(0, 1, "error!");
     return false;
   }
   else
   {
-    debugln(F("KWP exit succesful"));
+    //debugln(F("KWP exit succesful"));
     lcd_print(0, 1, "success!");
   }
   return true;
@@ -2247,13 +2290,13 @@ bool kwp_exit()
 
 bool obd_connect()
 {
-  debugln(F("Connecting to ECU"));
+  debugln(F("Connecting..."));
 
   block_counter = 0;
 
   lcd.clear();
   init_statusbar();
-  lcd_print(0, 1, "->PRESS ENTER<-");
+  lcd_print(0, 1, "->   ENTER   <-");
   while (true)
   {
     display_statusbar();
@@ -2300,17 +2343,17 @@ bool obd_connect()
   if (!read_connect_blocks(false))
   {
     debugln(F(" "));
-    debugln(F("------"));
+    //debugln(F("------"));
     debugln(F("ECU connection failed"));
-    debugln(F("------"));
+    //debugln(F("------"));
     display_statusbar();
     lcd_print(0, 1, "Read connect ERR");
     return false;
   }
   debugln(F(" "));
-  debugln(F("------"));
+  //debugln(F("------"));
   debugln(F("ECU connected"));
-  debugln(F("------"));
+  //debugln(F("------"));
 
   connected = true;
   display_statusbar();
@@ -2360,7 +2403,7 @@ void connect_helper_bool(int8_t &userinput_value, uint8_t &config_value, uint8_t
  */
 bool connect()
 {
-  debugstrnumln(F("Connect attempt: "), connection_attempts_counter);
+  debugstrnumln(F("Attempt: "), connection_attempts_counter);
 
   // Startup configuration // 0 = false, 1 = true, -1 = undefined for booleans as int8_t
   int8_t userinput_simulation_mode = -1;
@@ -2435,9 +2478,9 @@ bool connect()
     addr_selected = AUTO_SETUP_ADDRESS;
   }
   debugln(F("Saved config: "));
-  debugstrnumln(F("--- SIM "), simulation_mode_active);
-  debugstrnumln(F("--- baud "), baud_rate);
-  debugstrnumhexln(F("--- addr "), addr_selected);
+  debugstrnumln(F("SIM "), simulation_mode_active);
+  debugstrnumln(F("baud "), baud_rate);
+  debugstrnumhexln(F("addr "), addr_selected);
 
   // Connect to ECU
   connection_attempts_counter++;
