@@ -1069,7 +1069,7 @@ bool KWP_send_ACK_block()
 bool KWP_send_DTC_read_block()
 {
   debugln(F("Sending DTC read block"));
-  uint8_t s[32] = {0x03, block_counter, 0x07, 0x03};
+  uint8_t s[4] = {0x03, block_counter, 0x07, 0x03};
   return KWP_send_block(s, 4);
 }
 
@@ -1079,7 +1079,7 @@ bool KWP_send_DTC_read_block()
 bool KWP_send_DTC_delete_block()
 {
   debugln(F("Sending DTC delete block"));
-  uint8_t s[32] = {0x03, block_counter, 0x05, 0x03};
+  uint8_t s[4] = {0x03, block_counter, 0x05, 0x03};
   return KWP_send_block(s, 4);
 }
 
@@ -2523,11 +2523,11 @@ void setup()
   delay(222);
   uint32_t setup_start_time = millis();
   while (millis() - setup_start_time < 777) // active auto setup
-    if (BUTTON_SELECT(analogRead(0)))
-    {
-      auto_setup = true;
-      break;
-    }
+  if (BUTTON_SELECT(analogRead(0)))
+  {
+    auto_setup = true;
+    break;
+  }
 
   reset_dtc_status_errors_array();
 }
