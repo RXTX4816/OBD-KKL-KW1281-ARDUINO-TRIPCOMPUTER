@@ -4,7 +4,17 @@ This code is for the Arduino Mega with a 480x320 Non-Touch Color Display Shield.
  
 The code for the Arduino Uno with a 16x2 Display Shield can be found in the [ARDUINO_UNO branch](https://github.com/RXTX4816/OBD-KKL-KW1281-ARDUINO-TRIPCOMPUTER/tree/ARDUINO_UNO)
 
+![](assets/setup.png)
+![](assets/cockpit.png)
 
+
+
+Cockpit: From left to right, top to bottom
+km driven,  L fuel remaining,  coolant temp,  fuel / 100km - km remaining
+Yellow debug timers:
+menu switch time, draw time, frame time (2x)
+
+Other screens: Experimental, DTC, Custom Debug, Settings, Group reading(Coming soon)
 
 ## This repo depends on [KLineKWP1281Lib](https://github.com/domnulvlad/KLineKWP1281Lib) 
 
@@ -36,6 +46,10 @@ Flash:
 Or just use VS Code with Platformio extension to have the buttons in the bottom line.
 
 ## Setup
+
+![](assets/button.png) 
+I used this button it has UP DOWN LEFT RIGHT MIDDLE_CLICK SET_CLICK AND RESET_CLICK but any will do.
+
 Requirements: Arduino Mega (ATmega2560-16AU CH340G), 3.5" TFT LCD Module shield 5V 480x320 RGB ILI9486/ILI9488 16bit parallel interface no touch, Autodia K409 KKL OBD to USB cable. Be careful with the display since such a high resolution RGB display draws a lot of current and all display panels require an operating voltage of 3.3V. The Arduino Mega does not provide 3.3V at such high current draws so make sure you either buy a Shield with voltage adjusters included with an operating voltage of 5V or you step down it yourself. 
 
 Look inside the OBD cable and note which MCU is placed (E.g. FT232R or FT232RQ), get its datasheet, find the RXD and TXD pins, solder the first visible contact point to your Arduino digital pins of your liking (Here: 19 and 18 = RX1 & TX1) and cut both lines after the contact point. Don't forget to solder the +5V and GROUND from your Arduino to the OBD cable MCU (Just use the USB stripped male on the platine) since without it no communication is possible. You should have 4 cables connected between your OBD cable and your Arduino and a seperate USB or power souce input to power the Arduino and access its Serial debug communication.
