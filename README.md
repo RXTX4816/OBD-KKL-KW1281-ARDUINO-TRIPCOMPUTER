@@ -1,8 +1,10 @@
-# Arduino Uno Display Tripcomputer for the KW1281 KKL K-Line protocol
+# DEPRECEATED Arduino Uno Display Tripcomputer for the KW1281 KKL K-Line protocol
+
+DEPRECEATED: Look in main branch for the ARDUINO_MEGA version since UNO only supports Softwareserial and has too low of PROGMEM/RAM to have a useful and good looking UI. 
 
 This code is for the Arduino Uno with a 16x2 Display Shield. [WORKING]
 
-For the Arduino Mega with a TFT LCD Display Shield look into [this repo](https://github.com/RXTX4816/OBD-KKL-KW1281-ARDUINO-TFTLCD-TRIPCOMPUTER) [NOT WORKING YET]
+For the Arduino Mega with a TFT LCD Display Shield look into the [main branch](https://github.com/RXTX4816/OBD-KKL-KW1281-ARDUINO-TRIPCOMPUTER) [WORKING]
 
 ![](assets/obdisplay.gif)
 
