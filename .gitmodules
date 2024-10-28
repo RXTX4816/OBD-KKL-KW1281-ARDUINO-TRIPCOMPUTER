@@ -1,0 +1,3 @@
+[submodule "lib/KLineKWP1281Lib"]
+	path = lib/KLineKWP1281Lib
+	url = git@github.com:domnulvlad/KLineKWP1281Lib.git
