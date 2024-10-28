@@ -24,6 +24,10 @@ Simple trip computer for the Arduino Mega with a 480x320 Non-Touch Color Display
 You can find the project files in the src directory.
 Domnulvlad's [KLineKWP1281Lib](https://github.com/domnulvlad/KLineKWP1281Lib) is a hard dependency and added as a submodule in ROOT/lib/KLineKWP1281Lib/... 
 
+## [ECU](https://github.com/RXTX4816/OBD-KWP1281-Arduino-ECU-Emulator) Emulator
+
+If you don't want to test on a real ECU just turn your Arduino Mega into a ECU with [OBDServer](https://github.com/RXTX4816/OBD-KWP1281-Arduino-ECU-Emulator)
+
 ## Features
 - Supported baud rates 1200, 2400, 4800, 9600, 10400
 - Supports KWP1281 K-Line through KLineKWP1281Lib
